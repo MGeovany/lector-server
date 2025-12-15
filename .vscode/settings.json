@@ -1,0 +1,27 @@
+{
+  "go.useLanguageServer": true,
+  "go.lintTool": "golangci-lint",
+  "go.lintOnSave": "package",
+  "go.vetOnSave": "package",
+  "go.buildOnSave": "package",
+  "go.installDependenciesWhenBuilding": true,
+  "gopls": {
+    "analyses": {
+      "unusedparams": true,
+      "unusedwrite": true,
+      "unusedvariable": true
+    },
+    "staticcheck": true,
+    "usePlaceholders": true,
+    "completeUnimported": true,
+    "deepCompletion": true,
+    "hoverKind": "FullDocumentation"
+  },
+  "[go]": {
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": "explicit"
+    }
+  }
+}
+
