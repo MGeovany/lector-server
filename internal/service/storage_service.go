@@ -2,27 +2,33 @@ package service
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"io"
-	"net/http"
+
+	storage_go "github.com/supabase-community/storage-go"
 )
 
 type StorageService interface {
-	Upload(ctx context.Context, path string, file io.Reader) error
+	Upload(ctx context.Context, path string, file io.Reader, token string) error
 }
 
 type SupabaseStorage struct {
-	baseURL string
-	apiKey  string
+	baseURL       string
+	apiKey        string
+	storageClient *storage_go.Client
 }
 
 func NewStorageService(
 	baseURL string,
 	apiKey string,
 ) *SupabaseStorage {
+	storageURL := baseURL + "/storage/v1"
+	storageClient := storage_go.NewClient(storageURL, apiKey, nil)
+
 	return &SupabaseStorage{
-		baseURL: baseURL,
-		apiKey:  apiKey,
+		baseURL:       baseURL,
+		apiKey:        apiKey,
+		storageClient: storageClient,
 	}
 }
 
@@ -30,25 +36,21 @@ func (s *SupabaseStorage) Upload(
 	ctx context.Context,
 	path string,
 	file io.Reader,
+	token string,
 ) error {
+	bucketName := "documents"
 
-	req, _ := http.NewRequest(
-		"POST",
-		s.baseURL+"/storage/v1/object/"+path,
-		file,
-	)
-
-	req.Header.Set("Authorization", "Bearer "+s.apiKey)
-	req.Header.Set("Content-Type", "application/pdf")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
+	// Create a client with the user's access token for RLS policies
+	// Use anon key (not service role) when using user token
+	storageURL := s.baseURL + "/storage/v1"
+	headers := map[string]string{
+		"Authorization": "Bearer " + token,
 	}
-	defer resp.Body.Close()
+	storageClient := storage_go.NewClient(storageURL, s.apiKey, headers)
 
-	if resp.StatusCode >= 300 {
-		return errors.New("storage upload failed")
+	_, err := storageClient.UploadFile(bucketName, path, file)
+	if err != nil {
+		return fmt.Errorf("failed to upload file: %w", err)
 	}
 
 	return nil

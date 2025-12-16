@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -33,23 +34,56 @@ func (s *DocumentService) Upload(
 	ctx context.Context,
 	userID string,
 	file io.Reader,
+	token string,
+	originalName string,
 ) (*domain.Document, error) {
 
 	docID := uuid.New().String()
-	path := fmt.Sprintf("documents/%s/%s.pdf", userID, docID)
+	// Path should be relative to bucket, not include bucket name
+	path := fmt.Sprintf("%s/%s.pdf", userID, docID)
 
-	if err := s.storage.Upload(ctx, path, file); err != nil {
+	// Read file to get size
+	fileBytes := make([]byte, 0)
+	buf := make([]byte, 1024)
+	var totalSize int64
+	for {
+		n, err := file.Read(buf)
+		if n > 0 {
+			fileBytes = append(fileBytes, buf[:n]...)
+			totalSize += int64(n)
+		}
+		if err != nil {
+			break
+		}
+	}
+
+	// Upload file (need to create new reader from bytes)
+	fileReader := bytes.NewReader(fileBytes)
+	if err := s.storage.Upload(ctx, path, fileReader, token); err != nil {
 		return nil, err
 	}
 
-	doc := &domain.Document{
-		ID:        docID,
-		UserID:    userID,
-		FilePath:  path,
-		CreatedAt: time.Now().UTC(),
+	now := time.Now().UTC()
+
+	// Use original filename or generate one
+	if originalName == "" {
+		originalName = docID + ".pdf"
 	}
 
-	if err := s.repo.Create(doc); err != nil {
+	doc := &domain.Document{
+		ID:           docID,
+		UserID:       userID,
+		OriginalName: originalName,
+		Title:        originalName,              // Will be updated when we extract title from PDF
+		Content:      "[]",                      // Empty JSON array string, will be populated when PDF is processed
+		Metadata:     domain.DocumentMetadata{}, // Empty metadata
+		FilePath:     path,
+		FileSize:     totalSize,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+
+	if err := s.repo.Create(doc, token); err != nil {
 		return nil, err
 	}
 

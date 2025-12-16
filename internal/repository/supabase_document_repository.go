@@ -24,17 +24,32 @@ func NewSupabaseDocumentRepository(supabaseClient domain.SupabaseClient, logger 
 // Create a new document in Supabase
 func (r *SupabaseDocumentRepository) Create(
 	document *domain.Document,
+	token string,
 ) error {
 
-	client := r.supabaseClient.DB()
+	// Use client with token for RLS policies
+	client, err := r.supabaseClient.GetClientWithToken(token)
+	if err != nil {
+		return fmt.Errorf("failed to get client with token: %w", err)
+	}
 	if client == nil {
 		return fmt.Errorf("supabase client not initialized")
 	}
 
 	// Serializar campos complejos
-	contentJSON, err := json.Marshal(document.Content)
-	if err != nil {
-		return fmt.Errorf("failed to marshal content: %w", err)
+	// Content is already a JSON string, validate it's valid JSON
+	var contentJSON []byte
+	if document.Content != "" {
+		// Validate it's valid JSON by trying to unmarshal and remarshal
+		var contentInterface interface{}
+		if err := json.Unmarshal([]byte(document.Content), &contentInterface); err != nil {
+			// If not valid JSON, wrap it as a JSON string
+			contentJSON = []byte(document.Content)
+		} else {
+			contentJSON = []byte(document.Content)
+		}
+	} else {
+		contentJSON = []byte("[]")
 	}
 
 	metadataJSON, err := json.Marshal(document.Metadata)
@@ -74,8 +89,11 @@ func (r *SupabaseDocumentRepository) Create(
 }
 
 // GetByID retrieves a document by ID
-func (r *SupabaseDocumentRepository) GetByID(id string) (*domain.Document, error) {
-	client := r.supabaseClient.DB()
+func (r *SupabaseDocumentRepository) GetByID(id string, token string) (*domain.Document, error) {
+	client, err := r.supabaseClient.GetClientWithToken(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client with token: %w", err)
+	}
 	if client == nil {
 		return nil, fmt.Errorf("supabase client not initialized")
 	}
@@ -101,8 +119,11 @@ func (r *SupabaseDocumentRepository) GetByID(id string) (*domain.Document, error
 }
 
 // GetByUserID retrieves all documents for a user
-func (r *SupabaseDocumentRepository) GetByUserID(userID string) ([]*domain.Document, error) {
-	client := r.supabaseClient.DB()
+func (r *SupabaseDocumentRepository) GetByUserID(userID string, token string) ([]*domain.Document, error) {
+	client, err := r.supabaseClient.GetClientWithToken(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client with token: %w", err)
+	}
 	if client == nil {
 		return nil, fmt.Errorf("supabase client not initialized")
 	}
@@ -134,8 +155,11 @@ func (r *SupabaseDocumentRepository) GetByUserID(userID string) ([]*domain.Docum
 }
 
 // Update updates a document in Supabase
-func (r *SupabaseDocumentRepository) Update(document *domain.Document) error {
-	client := r.supabaseClient.DB()
+func (r *SupabaseDocumentRepository) Update(document *domain.Document, token string) error {
+	client, err := r.supabaseClient.GetClientWithToken(token)
+	if err != nil {
+		return fmt.Errorf("failed to get client with token: %w", err)
+	}
 	if client == nil {
 		return fmt.Errorf("supabase client not initialized")
 	}
@@ -169,13 +193,16 @@ func (r *SupabaseDocumentRepository) Update(document *domain.Document) error {
 }
 
 // Delete deletes a document from Supabase
-func (r *SupabaseDocumentRepository) Delete(id string) error {
-	client := r.supabaseClient.DB()
+func (r *SupabaseDocumentRepository) Delete(id string, token string) error {
+	client, err := r.supabaseClient.GetClientWithToken(token)
+	if err != nil {
+		return fmt.Errorf("failed to get client with token: %w", err)
+	}
 	if client == nil {
 		return fmt.Errorf("supabase client not initialized")
 	}
 
-	_, _, err := client.From("documents").
+	_, _, err = client.From("documents").
 		Delete("", "").
 		Eq("id", id).
 		Execute()
@@ -187,8 +214,11 @@ func (r *SupabaseDocumentRepository) Delete(id string) error {
 }
 
 // Search searches documents by title or content
-func (r *SupabaseDocumentRepository) Search(userID, query string) ([]*domain.Document, error) {
-	client := r.supabaseClient.DB()
+func (r *SupabaseDocumentRepository) Search(userID, query string, token string) ([]*domain.Document, error) {
+	client, err := r.supabaseClient.GetClientWithToken(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client with token: %w", err)
+	}
 	if client == nil {
 		return nil, fmt.Errorf("supabase client not initialized")
 	}

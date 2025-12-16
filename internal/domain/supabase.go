@@ -7,4 +7,5 @@ type SupabaseClient interface {
 	ValidateToken(token string) (*SupabaseUser, error)
 
 	DB() *supabase.Client
+	GetClientWithToken(token string) (*supabase.Client, error)
 }

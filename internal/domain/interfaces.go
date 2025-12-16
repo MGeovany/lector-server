@@ -35,12 +35,12 @@ type DocumentLibraryService interface {
 
 // DocumentRepository defines the interface for document storage operations
 type DocumentRepository interface {
-	Create(document *Document) error
-	GetByID(id string) (*Document, error)
-	GetByUserID(userID string) ([]*Document, error)
-	Update(document *Document) error
-	Delete(id string) error
-	Search(userID, query string) ([]*Document, error)
+	Create(document *Document, token string) error
+	GetByID(id string, token string) (*Document, error)
+	GetByUserID(userID string, token string) ([]*Document, error)
+	Update(document *Document, token string) error
+	Delete(id string, token string) error
+	Search(userID, query string, token string) ([]*Document, error)
 }
 
 // Preference Management Interfaces

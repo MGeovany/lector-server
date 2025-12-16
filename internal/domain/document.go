@@ -24,5 +24,5 @@ type DocumentMetadata struct {
 }
 
 type DocumentService interface {
-	Upload(ctx context.Context, userID string, file io.Reader) (*Document, error)
+	Upload(ctx context.Context, userID string, file io.Reader, token string, originalName string) (*Document, error)
 }

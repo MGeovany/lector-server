@@ -59,10 +59,18 @@ func (h *DocumentHandler) UploadDocument(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	token, ok := GetTokenFromContext(r)
+	if !ok {
+		h.writeError(w, http.StatusUnauthorized, "Token not found in context")
+		return
+	}
+
 	doc, err := h.documentService.Upload(
 		r.Context(),
 		user.ID,
 		file,
+		token,
+		header.Filename,
 	)
 	if err != nil {
 		h.writeError(w, 500, err.Error())

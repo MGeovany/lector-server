@@ -65,6 +65,31 @@ func (s *SupabaseClient) GetSupabaseClient() *supabase.Client {
 	return s.client
 }
 
+// GetClientWithToken returns a new Supabase client configured with the user's token
+// This is needed for RLS policies to work correctly
+func (s *SupabaseClient) GetClientWithToken(token string) (*supabase.Client, error) {
+	if s.client == nil {
+		return nil, fmt.Errorf("supabase client not initialized")
+	}
+
+	supabaseURL := s.config.GetSupabaseURL()
+	supabaseKey := s.config.GetSupabaseKey()
+
+	// Create a new client with the token in headers
+	clientOptions := &supabase.ClientOptions{
+		Headers: map[string]string{
+			"Authorization": "Bearer " + token,
+		},
+	}
+
+	client, err := supabase.NewClient(supabaseURL, supabaseKey, clientOptions)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Supabase client with token: %w", err)
+	}
+
+	return client, nil
+}
+
 // ValidateToken validates a Supabase JWT token and returns user info
 func (s *SupabaseClient) ValidateToken(token string) (*domain.SupabaseUser, error) {
 	if s.client == nil {
