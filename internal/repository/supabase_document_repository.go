@@ -5,26 +5,34 @@ import (
 	"fmt"
 
 	"pdf-text-reader/internal/domain"
-
-	"github.com/supabase-community/supabase-go"
 )
 
 // SupabaseDocumentRepository implements the domain.DocumentRepository interface
 type SupabaseDocumentRepository struct {
-	client *supabase.Client
-	logger domain.Logger
+	supabaseClient *SupabaseClient
+	logger         domain.Logger
 }
 
 // NewSupabaseDocumentRepository creates a new Supabase document repository
 func NewSupabaseDocumentRepository(supabaseClient domain.SupabaseClient, logger domain.Logger) domain.DocumentRepository {
+	typedClient, ok := supabaseClient.(*SupabaseClient)
+	if !ok {
+		panic("NewSupabaseDocumentRepository: expected *repository.SupabaseClient")
+	}
+
 	return &SupabaseDocumentRepository{
-		client: supabaseClient.(*SupabaseClient).GetSupabaseClient(),
-		logger: logger,
+		supabaseClient: typedClient,
+		logger:         logger,
 	}
 }
 
 // Create creates a new document in Supabase
 func (r *SupabaseDocumentRepository) Create(document *domain.Document) error {
+	client := r.supabaseClient.GetSupabaseClient()
+	if client == nil {
+		return fmt.Errorf("supabase client not initialized")
+	}
+
 	// Convert content and metadata to JSON strings for storage
 	contentJSON, err := json.Marshal(document.Content)
 	if err != nil {
@@ -50,7 +58,7 @@ func (r *SupabaseDocumentRepository) Create(document *domain.Document) error {
 		"updated_at":    document.UpdatedAt,
 	}
 
-	_, _, err = r.client.From("documents").Insert(data, false, "", "", "").Execute()
+	_, _, err = client.From("documents").Insert(data, false, "", "", "").Execute()
 	if err != nil {
 		return fmt.Errorf("failed to create document: %w", err)
 	}
@@ -61,7 +69,12 @@ func (r *SupabaseDocumentRepository) Create(document *domain.Document) error {
 
 // GetByID retrieves a document by ID
 func (r *SupabaseDocumentRepository) GetByID(id string) (*domain.Document, error) {
-	data, _, err := r.client.From("documents").
+	client := r.supabaseClient.GetSupabaseClient()
+	if client == nil {
+		return nil, fmt.Errorf("supabase client not initialized")
+	}
+
+	data, _, err := client.From("documents").
 		Select("*", "", false).
 		Eq("id", id).
 		Execute()
@@ -83,7 +96,12 @@ func (r *SupabaseDocumentRepository) GetByID(id string) (*domain.Document, error
 
 // GetByUserID retrieves all documents for a user
 func (r *SupabaseDocumentRepository) GetByUserID(userID string) ([]*domain.Document, error) {
-	data, _, err := r.client.From("documents").
+	client := r.supabaseClient.GetSupabaseClient()
+	if client == nil {
+		return nil, fmt.Errorf("supabase client not initialized")
+	}
+
+	data, _, err := client.From("documents").
 		Select("*", "", false).
 		Eq("user_id", userID).
 		Execute()
@@ -111,6 +129,11 @@ func (r *SupabaseDocumentRepository) GetByUserID(userID string) ([]*domain.Docum
 
 // Update updates a document in Supabase
 func (r *SupabaseDocumentRepository) Update(document *domain.Document) error {
+	client := r.supabaseClient.GetSupabaseClient()
+	if client == nil {
+		return fmt.Errorf("supabase client not initialized")
+	}
+
 	contentJSON, err := json.Marshal(document.Content)
 	if err != nil {
 		return fmt.Errorf("failed to marshal content: %w", err)
@@ -128,7 +151,7 @@ func (r *SupabaseDocumentRepository) Update(document *domain.Document) error {
 		"updated_at": document.UpdatedAt,
 	}
 
-	_, _, err = r.client.From("documents").
+	_, _, err = client.From("documents").
 		Update(data, "", "").
 		Eq("id", document.ID).
 		Execute()
@@ -141,7 +164,12 @@ func (r *SupabaseDocumentRepository) Update(document *domain.Document) error {
 
 // Delete deletes a document from Supabase
 func (r *SupabaseDocumentRepository) Delete(id string) error {
-	_, _, err := r.client.From("documents").
+	client := r.supabaseClient.GetSupabaseClient()
+	if client == nil {
+		return fmt.Errorf("supabase client not initialized")
+	}
+
+	_, _, err := client.From("documents").
 		Delete("", "").
 		Eq("id", id).
 		Execute()
@@ -154,8 +182,13 @@ func (r *SupabaseDocumentRepository) Delete(id string) error {
 
 // Search searches documents by title or content
 func (r *SupabaseDocumentRepository) Search(userID, query string) ([]*domain.Document, error) {
+	client := r.supabaseClient.GetSupabaseClient()
+	if client == nil {
+		return nil, fmt.Errorf("supabase client not initialized")
+	}
+
 	// Use Supabase's text search capabilities
-	data, _, err := r.client.From("documents").
+	data, _, err := client.From("documents").
 		Select("*", "", false).
 		Eq("user_id", userID).
 		Execute()

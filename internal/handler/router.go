@@ -24,6 +24,7 @@ func NewRouter(container *config.Container) http.Handler {
 	}).Methods("GET")
 	
 	// Initialize handlers
+	authHandler := NewAuthHandler(container)
 	documentHandler := NewDocumentHandler(container)
 	preferenceHandler := NewPreferenceHandler(container)
 	
@@ -33,6 +34,11 @@ func NewRouter(container *config.Container) http.Handler {
 	// Protected routes (require authentication)
 	protected := api.PathPrefix("").Subrouter()
 	protected.Use(authMiddleware)
+	
+	// Auth routes (protected)
+	protected.HandleFunc("/auth/profile", authHandler.GetProfile).Methods("GET")
+	protected.HandleFunc("/auth/profile", authHandler.UpdateProfile).Methods("PUT")
+	protected.HandleFunc("/auth/validate", authHandler.ValidateToken).Methods("GET")
 	
 	// Document routes (protected)
 	protected.HandleFunc("/documents", documentHandler.GetDocuments).Methods("GET")

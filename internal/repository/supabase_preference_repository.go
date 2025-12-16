@@ -5,27 +5,35 @@ import (
 	"fmt"
 
 	"pdf-text-reader/internal/domain"
-
-	"github.com/supabase-community/supabase-go"
 )
 
 // SupabasePreferenceRepository implements the domain.PreferenceRepository interface
 type SupabasePreferenceRepository struct {
-	client *supabase.Client
-	logger domain.Logger
+	supabaseClient *SupabaseClient
+	logger         domain.Logger
 }
 
 // NewSupabasePreferenceRepository creates a new Supabase preference repository
 func NewSupabasePreferenceRepository(supabaseClient domain.SupabaseClient, logger domain.Logger) domain.PreferenceRepository {
+	typedClient, ok := supabaseClient.(*SupabaseClient)
+	if !ok {
+		panic("NewSupabasePreferenceRepository: expected *repository.SupabaseClient")
+	}
+
 	return &SupabasePreferenceRepository{
-		client: supabaseClient.(*SupabaseClient).GetSupabaseClient(),
-		logger: logger,
+		supabaseClient: typedClient,
+		logger:         logger,
 	}
 }
 
 // GetPreferences retrieves user preferences from Supabase
 func (r *SupabasePreferenceRepository) GetPreferences(userID string) (*domain.UserPreferences, error) {
-	data, _, err := r.client.From("user_preferences").
+	client := r.supabaseClient.GetSupabaseClient()
+	if client == nil {
+		return nil, fmt.Errorf("supabase client not initialized")
+	}
+
+	data, _, err := client.From("user_preferences").
 		Select("*", "", false).
 		Eq("user_id", userID).
 		Execute()
@@ -57,6 +65,11 @@ func (r *SupabasePreferenceRepository) GetPreferences(userID string) (*domain.Us
 
 // UpdatePreferences updates or creates user preferences in Supabase
 func (r *SupabasePreferenceRepository) UpdatePreferences(prefs *domain.UserPreferences) error {
+	client := r.supabaseClient.GetSupabaseClient()
+	if client == nil {
+		return fmt.Errorf("supabase client not initialized")
+	}
+
 	data := map[string]interface{}{
 		"user_id":          prefs.UserID,
 		"font_size":        prefs.FontSize,
@@ -70,7 +83,7 @@ func (r *SupabasePreferenceRepository) UpdatePreferences(prefs *domain.UserPrefe
 	}
 
 	// Use upsert to insert or update
-	_, _, err := r.client.From("user_preferences").
+	_, _, err := client.From("user_preferences").
 		Upsert(data, "", "", "").
 		Execute()
 	if err != nil {
@@ -83,7 +96,12 @@ func (r *SupabasePreferenceRepository) UpdatePreferences(prefs *domain.UserPrefe
 
 // GetReadingPosition retrieves reading position for a document from Supabase
 func (r *SupabasePreferenceRepository) GetReadingPosition(userID, documentID string) (*domain.ReadingPosition, error) {
-	data, _, err := r.client.From("reading_positions").
+	client := r.supabaseClient.GetSupabaseClient()
+	if client == nil {
+		return nil, fmt.Errorf("supabase client not initialized")
+	}
+
+	data, _, err := client.From("reading_positions").
 		Select("*", "", false).
 		Eq("user_id", userID).
 		Eq("document_id", documentID).
@@ -112,6 +130,11 @@ func (r *SupabasePreferenceRepository) GetReadingPosition(userID, documentID str
 
 // UpdateReadingPosition updates or creates reading position in Supabase
 func (r *SupabasePreferenceRepository) UpdateReadingPosition(position *domain.ReadingPosition) error {
+	client := r.supabaseClient.GetSupabaseClient()
+	if client == nil {
+		return fmt.Errorf("supabase client not initialized")
+	}
+
 	data := map[string]interface{}{
 		"user_id":     position.UserID,
 		"document_id": position.DocumentID,
@@ -121,15 +144,15 @@ func (r *SupabasePreferenceRepository) UpdateReadingPosition(position *domain.Re
 	}
 
 	// Use upsert to insert or update
-	_, _, err := r.client.From("reading_positions").
+	_, _, err := client.From("reading_positions").
 		Upsert(data, "", "", "").
 		Execute()
 	if err != nil {
 		return fmt.Errorf("failed to update reading position: %w", err)
 	}
 
-	r.logger.Info("Reading position updated successfully", 
-		"user_id", position.UserID, 
+	r.logger.Info("Reading position updated successfully",
+		"user_id", position.UserID,
 		"document_id", position.DocumentID,
 		"position", position.Position)
 	return nil

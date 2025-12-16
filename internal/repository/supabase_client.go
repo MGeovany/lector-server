@@ -67,24 +67,25 @@ func (s *SupabaseClient) ValidateToken(token string) (*domain.SupabaseUser, erro
 		return nil, fmt.Errorf("Supabase client not initialized")
 	}
 
-	// For now, we'll implement a basic JWT validation
-	// In a production environment, you would validate the JWT signature
-	// and extract user information from the token claims
-	
-	// This is a simplified implementation - in production you should:
-	// TODO:
-	// 1. Validate JWT signature using the JWT secret
-	// 2. Extract user ID from token claims
-	// 3. Optionally fetch user details from Supabase if needed
-	
-	// For development, we'll return a mock user
-	// This should be replaced with proper JWT validation
+	// Get user info using an auth client with the access token.
+	// Note: passing "Authorization" via Supabase client headers does not affect GoTrue requests.
+	user, err := s.client.Auth.WithToken(token).GetUser()
+	if err != nil {
+		s.logger.Error("Failed to validate token with Supabase", err)
+		return nil, fmt.Errorf("invalid token: %w", err)
+	}
+
+	if user == nil {
+		return nil, fmt.Errorf("user not found")
+	}
+
+	// Convert Supabase user to domain user
 	domainUser := &domain.SupabaseUser{
-		ID:           "mock-user-id", // Extract from JWT claims
-		Email:        "user@example.com", // Extract from JWT claims
-		UserMetadata: make(map[string]interface{}),
-		CreatedAt:    "2024-01-01T00:00:00Z",
-		UpdatedAt:    "2024-01-01T00:00:00Z",
+		ID:           user.ID.String(),
+		Email:        user.Email,
+		UserMetadata: user.UserMetadata,
+		CreatedAt:    user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt:    user.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 
 	return domainUser, nil
