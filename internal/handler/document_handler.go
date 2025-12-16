@@ -2,9 +2,9 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
-	"pdf-text-reader/internal/config"
 	"pdf-text-reader/internal/domain"
 
 	"github.com/gorilla/mux"
@@ -12,15 +12,15 @@ import (
 
 // DocumentHandler handles document-related HTTP requests
 type DocumentHandler struct {
-	container *config.Container
-	logger    domain.Logger
+	documentService domain.DocumentService
+	logger          domain.Logger
 }
 
 // NewDocumentHandler creates a new document handler
-func NewDocumentHandler(container *config.Container) *DocumentHandler {
+func NewDocumentHandler(documentService domain.DocumentService, logger domain.Logger) *DocumentHandler {
 	return &DocumentHandler{
-		container: container,
-		logger:    container.GetLogger(),
+		documentService: documentService,
+		logger:          logger,
 	}
 }
 
@@ -32,20 +32,44 @@ func (h *DocumentHandler) GetDocuments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	documents, err := h.container.GetDocumentRepository().GetByUserID(user.ID)
-	if err != nil {
-		h.logger.Error("Failed to get documents", err, "user_id", user.ID)
-		h.writeError(w, http.StatusInternalServerError, "Failed to retrieve documents")
-		return
-	}
+	fmt.Println(user)
 
-	h.writeJSON(w, http.StatusOK, documents)
 }
 
 // UploadDocument handles document upload
 func (h *DocumentHandler) UploadDocument(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement document upload logic
-	h.writeError(w, http.StatusNotImplemented, "Upload document not implemented yet")
+
+	user, ok := GetUserFromContext(r)
+	if !ok {
+		h.writeError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	// Validate file is present
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		h.writeError(w, 400, "File is required")
+		return
+	}
+	defer file.Close()
+
+	// Validate file size
+	if header.Size > 10<<20 { // 10MB
+		h.writeError(w, 400, "File too large")
+		return
+	}
+
+	doc, err := h.documentService.Upload(
+		r.Context(),
+		user.ID,
+		file,
+	)
+	if err != nil {
+		h.writeError(w, 500, err.Error())
+		return
+	}
+
+	h.writeJSON(w, 201, doc)
 }
 
 // GetDocument handles getting a specific document
@@ -58,38 +82,27 @@ func (h *DocumentHandler) GetDocument(w http.ResponseWriter, r *http.Request) {
 
 	vars := mux.Vars(r)
 	documentID := vars["id"]
-	
+
 	if documentID == "" {
 		h.writeError(w, http.StatusBadRequest, "Document ID is required")
 		return
 	}
 
-	document, err := h.container.GetDocumentRepository().GetByID(documentID)
-	if err != nil {
-		h.logger.Error("Failed to get document", err, "document_id", documentID, "user_id", user.ID)
-		h.writeError(w, http.StatusNotFound, "Document not found")
-		return
-	}
+	fmt.Println(documentID, user)
 
-	// Verify the document belongs to the user
-	if document.UserID != user.ID {
-		h.writeError(w, http.StatusForbidden, "Access denied")
-		return
-	}
-
-	h.writeJSON(w, http.StatusOK, document)
+	h.writeJSON(w, http.StatusOK, documentID)
 }
 
 // DeleteDocument handles document deletion
 func (h *DocumentHandler) DeleteDocument(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	documentID := vars["id"]
-	
+
 	if documentID == "" {
 		h.writeError(w, http.StatusBadRequest, "Document ID is required")
 		return
 	}
-	
+
 	// TODO: Implement delete document logic
 	h.writeError(w, http.StatusNotImplemented, "Delete document not implemented yet")
 }
@@ -101,7 +114,7 @@ func (h *DocumentHandler) SearchDocuments(w http.ResponseWriter, r *http.Request
 		h.writeError(w, http.StatusBadRequest, "Search query is required")
 		return
 	}
-	
+
 	// TODO: Implement search documents logic
 	h.writeError(w, http.StatusNotImplemented, "Search documents not implemented yet")
 }

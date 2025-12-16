@@ -12,15 +12,16 @@ import (
 
 // PreferenceHandler handles preference-related HTTP requests
 type PreferenceHandler struct {
-	container *config.Container
-	logger    domain.Logger
+	container         *config.Container
+	logger            domain.Logger
+	preferenceService domain.PreferenceService
 }
 
 // NewPreferenceHandler creates a new preference handler
-func NewPreferenceHandler(container *config.Container) *PreferenceHandler {
+func NewPreferenceHandler(container *config.Container, logger domain.Logger) *PreferenceHandler {
 	return &PreferenceHandler{
 		container: container,
-		logger:    container.GetLogger(),
+		logger:    logger,
 	}
 }
 
@@ -32,7 +33,7 @@ func (h *PreferenceHandler) GetPreferences(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	preferences, err := h.container.GetPreferenceRepository().GetPreferences(user.ID)
+	preferences, err := h.preferenceService.GetPreferences(user.ID)
 	if err != nil {
 		h.logger.Error("Failed to get preferences", err, "user_id", user.ID)
 		h.writeError(w, http.StatusInternalServerError, "Failed to retrieve preferences")
@@ -52,12 +53,12 @@ func (h *PreferenceHandler) UpdatePreferences(w http.ResponseWriter, r *http.Req
 func (h *PreferenceHandler) GetReadingPosition(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	documentID := vars["documentId"]
-	
+
 	if documentID == "" {
 		h.writeError(w, http.StatusBadRequest, "Document ID is required")
 		return
 	}
-	
+
 	// TODO: Implement get reading position logic
 	h.writeError(w, http.StatusNotImplemented, "Get reading position not implemented yet")
 }
@@ -66,12 +67,12 @@ func (h *PreferenceHandler) GetReadingPosition(w http.ResponseWriter, r *http.Re
 func (h *PreferenceHandler) UpdateReadingPosition(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	documentID := vars["documentId"]
-	
+
 	if documentID == "" {
 		h.writeError(w, http.StatusBadRequest, "Document ID is required")
 		return
 	}
-	
+
 	// TODO: Implement update reading position logic
 	h.writeError(w, http.StatusNotImplemented, "Update reading position not implemented yet")
 }

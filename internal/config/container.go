@@ -2,61 +2,64 @@ package config
 
 import (
 	"pdf-text-reader/internal/domain"
+	"pdf-text-reader/internal/infra/supabase"
 	"pdf-text-reader/internal/repository"
+	"pdf-text-reader/internal/service"
 	"pdf-text-reader/pkg/logger"
 )
 
 // Container holds all application dependencies
 type Container struct {
-	Config               domain.Config
-	Logger               domain.Logger
-	SupabaseClient       domain.SupabaseClient
-	DocumentRepository   domain.DocumentRepository
-	PreferenceRepository domain.PreferenceRepository
+	Config          domain.Config
+	Logger          domain.Logger
+	SupabaseClient  domain.SupabaseClient
+	DocumentService domain.DocumentService
+	AuthService     domain.AuthService
+	StorageService  domain.StorageService
 }
 
 // NewContainer creates a new dependency injection container
 func NewContainer() *Container {
-	config := NewConfig()
-	appLogger := logger.NewLogger(config.GetLogLevel())
-	
-	// Initialize Supabase client
-	supabaseClient := repository.NewSupabaseClient(config, appLogger)
-	
-	// Initialize repositories
-	documentRepo := repository.NewSupabaseDocumentRepository(supabaseClient, appLogger)
-	preferenceRepo := repository.NewSupabasePreferenceRepository(supabaseClient, appLogger)
-	
-	return &Container{
-		Config:               config,
-		Logger:               appLogger,
-		SupabaseClient:       supabaseClient,
-		DocumentRepository:   documentRepo,
-		PreferenceRepository: preferenceRepo,
+	cfg := NewConfig()
+	log := logger.NewLogger(cfg.GetLogLevel())
+
+	// Supabase client
+	supabaseClient := supabase.NewSupabaseClient(cfg, log)
+	if err := supabaseClient.Initialize(); err != nil {
+		log.Error("Failed to initialize Supabase client", err)
+		panic(err)
 	}
-}
 
-// GetConfig returns the configuration instance
-func (c *Container) GetConfig() domain.Config {
-	return c.Config
-}
+	// Repositories
+	documentRepo := repository.NewSupabaseDocumentRepository(
+		supabaseClient,
+		log,
+	)
 
-// GetLogger returns the logger instance
-func (c *Container) GetLogger() domain.Logger {
-	return c.Logger
-}
+	// Services
 
-// GetSupabaseClient returns the Supabase client instance
-func (c *Container) GetSupabaseClient() domain.SupabaseClient {
-	return c.SupabaseClient
-}
+	storageService := service.NewStorageService(
+		cfg.GetSupabaseURL(),
+		cfg.GetSupabaseKey(),
+	)
 
-// GetDocumentRepository returns the document repository instance
-func (c *Container) GetDocumentRepository() domain.DocumentRepository {
-	return c.DocumentRepository
-}
+	documentService := service.NewDocumentService(
+		documentRepo,
+		storageService,
+		log,
+	)
 
-// GetPreferenceRepository returns the preference repository instance
-func (c *Container) GetPreferenceRepository() domain.PreferenceRepository {
-	return c.PreferenceRepository
+	authService := service.NewAuthService(
+		supabaseClient,
+		log,
+	)
+
+	return &Container{
+		Config:          cfg,
+		Logger:          log,
+		SupabaseClient:  supabaseClient,
+		DocumentService: documentService,
+		AuthService:     authService,
+		StorageService:  storageService,
+	}
 }

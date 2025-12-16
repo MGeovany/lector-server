@@ -9,26 +9,21 @@ import (
 
 // SupabasePreferenceRepository implements the domain.PreferenceRepository interface
 type SupabasePreferenceRepository struct {
-	supabaseClient *SupabaseClient
+	supabaseClient domain.SupabaseClient
 	logger         domain.Logger
 }
 
 // NewSupabasePreferenceRepository creates a new Supabase preference repository
 func NewSupabasePreferenceRepository(supabaseClient domain.SupabaseClient, logger domain.Logger) domain.PreferenceRepository {
-	typedClient, ok := supabaseClient.(*SupabaseClient)
-	if !ok {
-		panic("NewSupabasePreferenceRepository: expected *repository.SupabaseClient")
-	}
-
 	return &SupabasePreferenceRepository{
-		supabaseClient: typedClient,
+		supabaseClient: supabaseClient,
 		logger:         logger,
 	}
 }
 
 // GetPreferences retrieves user preferences from Supabase
 func (r *SupabasePreferenceRepository) GetPreferences(userID string) (*domain.UserPreferences, error) {
-	client := r.supabaseClient.GetSupabaseClient()
+	client := r.supabaseClient.DB()
 	if client == nil {
 		return nil, fmt.Errorf("supabase client not initialized")
 	}
@@ -65,7 +60,7 @@ func (r *SupabasePreferenceRepository) GetPreferences(userID string) (*domain.Us
 
 // UpdatePreferences updates or creates user preferences in Supabase
 func (r *SupabasePreferenceRepository) UpdatePreferences(prefs *domain.UserPreferences) error {
-	client := r.supabaseClient.GetSupabaseClient()
+	client := r.supabaseClient.DB()
 	if client == nil {
 		return fmt.Errorf("supabase client not initialized")
 	}
@@ -96,7 +91,7 @@ func (r *SupabasePreferenceRepository) UpdatePreferences(prefs *domain.UserPrefe
 
 // GetReadingPosition retrieves reading position for a document from Supabase
 func (r *SupabasePreferenceRepository) GetReadingPosition(userID, documentID string) (*domain.ReadingPosition, error) {
-	client := r.supabaseClient.GetSupabaseClient()
+	client := r.supabaseClient.DB()
 	if client == nil {
 		return nil, fmt.Errorf("supabase client not initialized")
 	}
@@ -130,7 +125,7 @@ func (r *SupabasePreferenceRepository) GetReadingPosition(userID, documentID str
 
 // UpdateReadingPosition updates or creates reading position in Supabase
 func (r *SupabasePreferenceRepository) UpdateReadingPosition(position *domain.ReadingPosition) error {
-	client := r.supabaseClient.GetSupabaseClient()
+	client := r.supabaseClient.DB()
 	if client == nil {
 		return fmt.Errorf("supabase client not initialized")
 	}

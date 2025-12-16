@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"io"
 	"mime/multipart"
 )
 
@@ -71,39 +70,6 @@ type SessionRepository interface {
 	GetByUserID(userID string) ([]*Session, error)
 	Delete(id string) error
 	DeleteExpired() error
-}
-
-// PDF Processing Interfaces
-
-// PDFProcessor defines the main interface for PDF processing operations
-type PDFProcessor interface {
-	ExtractText(file io.Reader) (*ExtractedDocument, error)
-	ValidateFile(file io.Reader) error
-	GetMetadata(file io.Reader) (*DocumentMetadata, error)
-}
-
-// TextExtractor defines the strategy interface for text extraction
-type TextExtractor interface {
-	Extract(document *PDFDocument) (*ExtractedText, error)
-	SupportsFormat(format PDFFormat) bool
-}
-
-// File Management Interfaces
-
-// FileHandler defines the interface for file operations
-type FileHandler interface {
-	SaveUpload(file multipart.File, filename string) (*FileInfo, error)
-	CleanupTemporary(fileID string) error
-	ValidateFileType(file multipart.File) error
-}
-
-// Infrastructure Interfaces
-
-// SupabaseClient defines the interface for Supabase operations
-type SupabaseClient interface {
-	Initialize() error
-	GetClient() interface{}
-	ValidateToken(token string) (*SupabaseUser, error)
 }
 
 // Logger defines the interface for logging operations

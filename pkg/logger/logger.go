@@ -30,7 +30,7 @@ type AppLogger struct {
 func NewLogger(levelStr string) domain.Logger {
 	level := parseLogLevel(levelStr)
 	logger := log.New(os.Stdout, "", 0)
-	
+
 	return &AppLogger{
 		level:  level,
 		logger: logger,
@@ -69,9 +69,9 @@ func (l *AppLogger) Warn(msg string, fields ...interface{}) {
 // log is the internal logging method
 func (l *AppLogger) log(level, msg string, fields ...interface{}) {
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
-	
+
 	logMsg := fmt.Sprintf("[%s] %s: %s", timestamp, level, msg)
-	
+
 	if len(fields) > 0 {
 		fieldStrs := make([]string, 0, len(fields)/2)
 		for i := 0; i < len(fields); i += 2 {
@@ -83,7 +83,7 @@ func (l *AppLogger) log(level, msg string, fields ...interface{}) {
 			logMsg += " " + strings.Join(fieldStrs, " ")
 		}
 	}
-	
+
 	l.logger.Println(logMsg)
 }
 

@@ -18,47 +18,52 @@ func main() {
 	if err := godotenv.Load(); err != nil {
 		log.Printf("Warning: .env file not found or could not be loaded: %v", err)
 	}
-
+	// Wiring
 	container := config.NewContainer()
-	logger := container.GetLogger()
-	cfg := container.GetConfig()
-	supabaseClient := container.GetSupabaseClient()
 
-	logger.Info("Starting PDF Text Reader server", "port", cfg.GetServerPort())
+	// Handlers
+	documentHandler := handler.NewDocumentHandler(
+		container.DocumentService,
+		container.Logger,
+	)
 
-	// Initialize Supabase client
-	if err := supabaseClient.Initialize(); err != nil {
-		logger.Error("Failed to initialize Supabase client", err)
-		os.Exit(1)
-	}
+	authHandler := handler.NewAuthHandler(
+		container,
+	)
 
-	// Create router with all routes and CORS configured
-	router := handler.NewRouter(container)
+	authMiddleware := handler.NewAuthMiddleware(
+		container.AuthService,
+		container.Logger,
+	)
 
+	// Router
+	router := handler.NewRouter(
+		authHandler,
+		documentHandler,
+		authMiddleware.Middleware,
+	)
+
+	// start server
 	server := &http.Server{
-		Addr:    ":" + cfg.GetServerPort(),
+		Addr:    ":" + container.Config.GetServerPort(),
 		Handler: router,
 	}
 
-	// Start server in a goroutine
+	// Run server
 	go func() {
-		logger.Info("Server listening", "address", server.Addr)
+		container.Logger.Info("Server listening", "address", server.Addr)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Error("Server failed to start", err)
+			container.Logger.Error("Server failed to start", err)
 			os.Exit(1)
 		}
 	}()
-
-	// Wait for interrupt signal to gracefully shutdown the server
+	// Graceful shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	logger.Info("Shutting down server...")
-	
-	if err := server.Close(); err != nil {
-		logger.Error("Server forced to shutdown", err)
-	}
+	container.Logger.Info("Shutting down server...")
+	_ = server.Close()
 
-	logger.Info("Server exited")
+	container.Logger.Info("Server exited")
 }

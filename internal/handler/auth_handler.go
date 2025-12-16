@@ -9,7 +9,8 @@ import (
 
 // AuthHandler handles authentication-related requests
 type AuthHandler struct {
-	container *config.Container
+	container      *config.Container
+	authMiddleware *AuthMiddleware
 }
 
 // NewAuthHandler creates a new authentication handler
@@ -59,20 +60,14 @@ func (h *AuthHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(user)
 }
 
-// ValidateToken validates a token and returns user info (for frontend validation)
 func (h *AuthHandler) ValidateToken(w http.ResponseWriter, r *http.Request) {
 	user, ok := GetUserFromContext(r)
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "Invalid token")
+		writeError(w, http.StatusUnauthorized, "User not found in context")
 		return
-	}
-
-	response := map[string]interface{}{
-		"valid": true,
-		"user":  user,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
+	json.NewEncoder(w).Encode(user)
 }

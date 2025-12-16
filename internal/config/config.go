@@ -9,13 +9,13 @@ import (
 
 // AppConfig implements the domain.Config interface
 type AppConfig struct {
-	ServerPort    string
-	UploadPath    string
-	MaxFileSize   int64
-	LogLevel      string
-	SupabaseURL   string
-	SupabaseKey   string
-	JWTSecret     string
+	ServerPort  string
+	UploadPath  string
+	MaxFileSize int64
+	LogLevel    string
+	SupabaseURL string
+	SupabaseKey string
+	JWTSecret   string
 }
 
 // NewConfig creates a new configuration instance with default values

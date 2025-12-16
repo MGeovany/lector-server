@@ -1,4 +1,4 @@
-package repository
+package supabase
 
 import (
 	"fmt"
@@ -32,13 +32,17 @@ func NewSupabaseClient(config domain.Config, logger domain.Logger) domain.Supaba
 	}
 }
 
+func (s *SupabaseClient) DB() *supabase.Client {
+	return s.client
+}
+
 // Initialize establishes a connection to Supabase
 func (s *SupabaseClient) Initialize() error {
 	supabaseURL := s.config.GetSupabaseURL()
 	supabaseKey := s.config.GetSupabaseKey()
 
 	if supabaseURL == "" || supabaseKey == "" {
-		return fmt.Errorf("Supabase URL and key must be provided")
+		return fmt.Errorf("supabase URL and key must be provided")
 	}
 
 	client, err := supabase.NewClient(supabaseURL, supabaseKey, &supabase.ClientOptions{})
