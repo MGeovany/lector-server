@@ -5,6 +5,76 @@ import (
 	"mime/multipart"
 )
 
+// User Management Interfaces
+
+// UserService defines the interface for user management operations
+type UserService interface {
+	Login(email, password string) (*AuthToken, error)
+	GetProfile(userID string) (*User, error)
+	UpdateProfile(userID string, updates *UserUpdate) error
+	Logout(userID string) error
+}
+
+// UserRepository defines the interface for user data operations
+type UserRepository interface {
+	GetByID(id string) (*User, error)
+	GetByEmail(email string) (*User, error)
+	Update(user *User) error
+	Delete(id string) error
+}
+
+// Document Management Interfaces
+
+// DocumentLibraryService defines the interface for document library operations
+type DocumentLibraryService interface {
+	UploadDocument(userID string, file multipart.File, filename string) (*Document, error)
+	GetUserDocuments(userID string) ([]*Document, error)
+	GetDocument(userID, documentID string) (*Document, error)
+	DeleteDocument(userID, documentID string) error
+	SearchDocuments(userID, query string) ([]*Document, error)
+}
+
+// DocumentRepository defines the interface for document storage operations
+type DocumentRepository interface {
+	Create(document *Document) error
+	GetByID(id string) (*Document, error)
+	GetByUserID(userID string) ([]*Document, error)
+	Update(document *Document) error
+	Delete(id string) error
+	Search(userID, query string) ([]*Document, error)
+}
+
+// Preference Management Interfaces
+
+// PreferenceService defines the interface for user preference operations
+type PreferenceService interface {
+	GetPreferences(userID string) (*UserPreferences, error)
+	UpdatePreferences(userID string, prefs *UserPreferences) error
+	GetReadingPosition(userID, documentID string) (*ReadingPosition, error)
+	UpdateReadingPosition(userID, documentID string, position *ReadingPosition) error
+}
+
+// PreferenceRepository defines the interface for preference data operations
+type PreferenceRepository interface {
+	GetPreferences(userID string) (*UserPreferences, error)
+	UpdatePreferences(prefs *UserPreferences) error
+	GetReadingPosition(userID, documentID string) (*ReadingPosition, error)
+	UpdateReadingPosition(position *ReadingPosition) error
+}
+
+// Session Management Interfaces
+
+// SessionRepository defines the interface for session data operations
+type SessionRepository interface {
+	Create(session *Session) error
+	GetByID(id string) (*Session, error)
+	GetByUserID(userID string) ([]*Session, error)
+	Delete(id string) error
+	DeleteExpired() error
+}
+
+// PDF Processing Interfaces
+
 // PDFProcessor defines the main interface for PDF processing operations
 type PDFProcessor interface {
 	ExtractText(file io.Reader) (*ExtractedDocument, error)
@@ -18,18 +88,22 @@ type TextExtractor interface {
 	SupportsFormat(format PDFFormat) bool
 }
 
+// File Management Interfaces
+
 // FileHandler defines the interface for file operations
 type FileHandler interface {
-	SaveUpload(file multipart.File) (*FileInfo, error)
+	SaveUpload(file multipart.File, filename string) (*FileInfo, error)
 	CleanupTemporary(fileID string) error
 	ValidateFileType(file multipart.File) error
 }
 
-// DocumentRepository defines the interface for document storage operations
-type DocumentRepository interface {
-	Store(document *ExtractedDocument) error
-	Retrieve(documentID string) (*ExtractedDocument, error)
-	Delete(documentID string) error
+// Infrastructure Interfaces
+
+// SupabaseClient defines the interface for Supabase operations
+type SupabaseClient interface {
+	Initialize() error
+	GetClient() interface{}
+	ValidateToken(token string) (*SupabaseUser, error)
 }
 
 // Logger defines the interface for logging operations
@@ -46,5 +120,7 @@ type Config interface {
 	GetUploadPath() string
 	GetMaxFileSize() int64
 	GetLogLevel() string
-	GetDatabasePath() string
+	GetSupabaseURL() string
+	GetSupabaseKey() string
+	GetJWTSecret() string
 }

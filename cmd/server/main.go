@@ -1,34 +1,43 @@
 package main
 
 import (
-	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"pdf-text-reader/internal/config"
+	"pdf-text-reader/internal/handler"
+
+	"github.com/joho/godotenv"
 )
 
 func main() {
+	// Load environment variables from .env file
+	if err := godotenv.Load(); err != nil {
+		log.Printf("Warning: .env file not found or could not be loaded: %v", err)
+	}
+
 	container := config.NewContainer()
 	logger := container.GetLogger()
 	cfg := container.GetConfig()
+	supabaseClient := container.GetSupabaseClient()
 
 	logger.Info("Starting PDF Text Reader server", "port", cfg.GetServerPort())
 
-	mux := http.NewServeMux()
-	
-	// Health check endpoint
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, `{"status":"ok","service":"pdf-text-reader"}`)
-	})
+	// Initialize Supabase client
+	if err := supabaseClient.Initialize(); err != nil {
+		logger.Error("Failed to initialize Supabase client", err)
+		os.Exit(1)
+	}
+
+	// Create router with all routes and CORS configured
+	router := handler.NewRouter(container)
 
 	server := &http.Server{
 		Addr:    ":" + cfg.GetServerPort(),
-		Handler: mux,
+		Handler: router,
 	}
 
 	// Start server in a goroutine

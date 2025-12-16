@@ -33,4 +33,8 @@ Thumbs.db
 !.env.example
 !.env.test
 
+# Uploads
+uploads/
+*.pdf
+
 .kiro/

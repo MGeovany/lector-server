@@ -1,103 +1,106 @@
 # PDF Text Reader
 
-HTTP server in Go for processing and reading text from PDF files.
+A complete web application that transforms illegible PDF documents into highly readable, customizable text displays with full user management and document library features.
 
-## Requirements
+## Architecture
 
-- Go 1.25.5 or higher
+- **Backend**: Go API server with Supabase integration
+- **Frontend**: SvelteKit with TypeScript and Tailwind CSS
+- **Database**: Supabase (PostgreSQL with real-time features)
+- **Authentication**: Supabase Auth
+- **File Storage**: Supabase Storage
 
-## Installation
+## Quick Start
+
+### Prerequisites
+
+- Go 1.21 or later
+- Node.js 18 or later
+- pnpm package manager
+- Supabase account
+
+## Development
+
+### Backend (Go)
 
 ```bash
-# Install dependencies
-go mod download
+cd reader-go
 
-# Install Air for hot-reload (optional but recommended)
-go install github.com/air-verse/air@latest
-```
-
-**Note:** If `air` is not in your PATH after installation, add `~/go/bin` to your PATH or use `~/go/bin/air` directly.
-
-## Running
-
-### Hot-reload using Make
-
-```bash
+# Development with hot reload
 make dev
-```
 
-This will automatically detect changes and restart the server. The Makefile handles the `air` path automatically.
-
-### Option 1b: With hot-reload directly
-
-```bash
-# Use the full path to avoid conflicts with other 'air' tools
-~/go/bin/air
-
-# Or if ~/go/bin is in your PATH:
-air
-```
-
-**Note:** If you get an error about "R language server", it means there's another `air` tool in your PATH. Use `make dev` or `~/go/bin/air` directly.
-
-### Option 2: Run directly with Make
-
-```bash
+# Run without hot reload
 make run
-```
 
-### Option 3: Run directly with `go run`
-
-```bash
-go run cmd/server/main.go
-```
-
-### Option 4: Build and run
-
-```bash
 # Build
 make build
 
-# Run
-./bin/server
+# Run tests
+make test
+
+# Check environment
+make check-env
 ```
 
-Or use Make:
+## Project Structure
 
-```bash
-make build && ./bin/server
+```
+pdf-text-reader/
+├── reader-go/                 # Go backend
+│   ├── cmd/server/           # Application entry point
+│   ├── internal/             # Internal packages
+│   │   ├── config/          # Configuration management
+│   │   ├── domain/          # Domain models and interfaces
+│   │   ├── handler/         # HTTP handlers
+│   │   ├── repository/      # Data access layer
+│   │   └── service/         # Business logic
+│   ├── pkg/                 # Shared packages
+│   ├── scripts/             # Development scripts
+│   └── supabase_schema.sql  # Database schema
+├── reader-app/               # SvelteKit frontend
+│   ├── src/
+│   │   ├── lib/            # Shared libraries
+│   │   │   ├── api/        # API client
+│   │   │   └── stores/     # Svelte stores
+│   │   └── routes/         # Application routes
+│   └── scripts/            # Development scripts
+└── dev-setup.sh            # Master setup script
 ```
 
-### Other useful Make commands
+## API Endpoints
 
-```bash
-make help      # Show all available commands
-make test      # Run tests
-make vet       # Run go vet
-make fmt       # Format code
-make clean     # Clean build artifacts
-```
+### Authentication
+All protected endpoints require a valid Supabase JWT token in the Authorization header.
 
-## Environment Variables
+### Documents
+- `GET /api/v1/documents` - List user documents
+- `POST /api/v1/documents` - Upload new document
+- `GET /api/v1/documents/{id}` - Get specific document
+- `DELETE /api/v1/documents/{id}` - Delete document
+- `GET /api/v1/documents/search` - Search documents
 
-The server uses the following environment variables (all are optional):
+### Preferences
+- `GET /api/v1/preferences` - Get user preferences
+- `PUT /api/v1/preferences` - Update preferences
+- `GET /api/v1/preferences/reading-position/{documentId}` - Get reading position
+- `PUT /api/v1/preferences/reading-position/{documentId}` - Update reading position
 
-- `SERVER_PORT`: Server port (default: `8080`)
-- `UPLOAD_PATH`: Directory for uploading files (default: `./uploads`)
-- `MAX_FILE_SIZE`: Maximum file size in bytes (default: `52428800` = 50MB)
-- `LOG_LEVEL`: Logging level (default: `info`)
-- `DATABASE_PATH`: Database path (default: `./data`)
+## Database Schema
 
-### Example with environment variables:
+The application uses three main tables:
 
-```bash
-SERVER_PORT=3000 LOG_LEVEL=debug go run cmd/server/main.go
-```
+- **documents**: Store PDF metadata and extracted content
+- **user_preferences**: User reading preferences and settings
+- **reading_positions**: Track reading progress across documents
 
-## Endpoints
+All tables implement Row Level Security (RLS) to ensure users can only access their own data.
 
-- `GET /health` - Server health check
+## Contributing
 
-## Stopping the server
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Run tests and linting
+5. Submit a pull request
 
-Press `Ctrl+C` to stop the server gracefully.
+

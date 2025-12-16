@@ -30,9 +30,6 @@ build: ## Build the server
 clean: ## Clean build artifacts
 	rm -rf bin/ tmp/ build-errors.log
 
-test: ## Run tests
-	$(GO) test ./...
-
 vet: ## Run go vet
 	$(GO) vet ./...
 
@@ -46,4 +43,11 @@ install-deps: ## Install dependencies
 kill-port: ## Kill process using port 8080
 	@echo "Killing process on port 8080..."
 	@lsof -ti :8080 | xargs kill -9 2>/dev/null || echo "No process found on port 8080"
+
+check-env: ## Check if environment is properly configured
+	@echo "Checking environment configuration..."
+	@if [ ! -f .env ]; then echo "❌ .env file not found"; exit 1; fi
+	@if ! grep -q "SUPABASE_URL=https://" .env; then echo "⚠️  Please configure SUPABASE_URL in .env"; fi
+	@if ! grep -q "SUPABASE_ANON_KEY=" .env; then echo "⚠️  Please configure SUPABASE_ANON_KEY in .env"; fi
+	@echo "✅ Environment check complete"
 

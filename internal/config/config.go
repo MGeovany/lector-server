@@ -9,21 +9,25 @@ import (
 
 // AppConfig implements the domain.Config interface
 type AppConfig struct {
-	ServerPort   string
-	UploadPath   string
-	MaxFileSize  int64
-	LogLevel     string
-	DatabasePath string
+	ServerPort    string
+	UploadPath    string
+	MaxFileSize   int64
+	LogLevel      string
+	SupabaseURL   string
+	SupabaseKey   string
+	JWTSecret     string
 }
 
 // NewConfig creates a new configuration instance with default values
 func NewConfig() domain.Config {
 	return &AppConfig{
-		ServerPort:   getEnvOrDefault("SERVER_PORT", "8080"),
-		UploadPath:   getEnvOrDefault("UPLOAD_PATH", "./uploads"),
-		MaxFileSize:  getEnvInt64OrDefault("MAX_FILE_SIZE", 50*1024*1024), // 50MB default
-		LogLevel:     getEnvOrDefault("LOG_LEVEL", "info"),
-		DatabasePath: getEnvOrDefault("DATABASE_PATH", "./data"),
+		ServerPort:  getEnvOrDefault("SERVER_PORT", "8080"),
+		UploadPath:  getEnvOrDefault("UPLOAD_PATH", "./uploads"),
+		MaxFileSize: getEnvInt64OrDefault("MAX_FILE_SIZE", 50*1024*1024), // 50MB default
+		LogLevel:    getEnvOrDefault("LOG_LEVEL", "info"),
+		SupabaseURL: getEnvOrDefault("SUPABASE_URL", ""),
+		SupabaseKey: getEnvOrDefault("SUPABASE_ANON_KEY", ""),
+		JWTSecret:   getEnvOrDefault("JWT_SECRET", "your-secret-key-change-in-production"),
 	}
 }
 
@@ -47,9 +51,19 @@ func (c *AppConfig) GetLogLevel() string {
 	return c.LogLevel
 }
 
-// GetDatabasePath returns the database path
-func (c *AppConfig) GetDatabasePath() string {
-	return c.DatabasePath
+// GetSupabaseURL returns the Supabase URL
+func (c *AppConfig) GetSupabaseURL() string {
+	return c.SupabaseURL
+}
+
+// GetSupabaseKey returns the Supabase anon key
+func (c *AppConfig) GetSupabaseKey() string {
+	return c.SupabaseKey
+}
+
+// GetJWTSecret returns the JWT secret key
+func (c *AppConfig) GetJWTSecret() string {
+	return c.JWTSecret
 }
 
 // Helper functions for environment variable handling
