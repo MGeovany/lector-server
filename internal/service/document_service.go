@@ -39,6 +39,14 @@ func (s *DocumentService) GetDocumentsByUserID(userID string, token string) ([]*
 	return documents, nil
 }
 
+func (s *DocumentService) DeleteDocument( documentID string, token string) error {
+	err := s.repo.Delete(documentID, token)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func (s *DocumentService) Upload(
 	ctx context.Context,
 	userID string,

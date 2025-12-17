@@ -40,7 +40,6 @@ func NewRouter(
 	protected.HandleFunc("/documents/{id}", documentHandler.GetDocument).Methods(http.MethodGet)
 	protected.HandleFunc("/documents/{id}", documentHandler.DeleteDocument).Methods(http.MethodDelete)
 	protected.HandleFunc("/documents/search", documentHandler.SearchDocuments).Methods(http.MethodGet)
-	// documents by user id
 	protected.HandleFunc("/documents/user/{id}", documentHandler.GetDocumentsByUserID).Methods(http.MethodGet)
 
 	// CORS

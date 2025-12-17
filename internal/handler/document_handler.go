@@ -125,8 +125,19 @@ func (h *DocumentHandler) DeleteDocument(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// TODO: Implement delete document logic
-	h.writeError(w, http.StatusNotImplemented, "Delete document not implemented yet")
+	token, ok := GetTokenFromContext(r)
+	if !ok {
+		h.writeError(w, http.StatusUnauthorized, "Token not found in context")
+		return
+	}
+
+	err := h.documentService.DeleteDocument(documentID, token)
+	if err != nil {
+		h.writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	h.writeJSON(w, http.StatusOK, "Document deleted successfully")
 }
 
 // SearchDocuments handles document search
