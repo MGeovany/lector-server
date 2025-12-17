@@ -10,6 +10,7 @@ import (
 	"pdf-text-reader/internal/domain"
 
 	"github.com/google/uuid"
+	"encoding/json"
 )
 
 type DocumentService struct {
@@ -28,6 +29,14 @@ func NewDocumentService(
 		repo:    repo,
 		logger:  logger,
 	}
+}
+
+func (s *DocumentService) GetDocumentsByUserID(userID string, token string) ([]*domain.Document, error) {
+	documents, err := s.repo.GetByUserID(userID, token)
+	if err != nil {
+		return nil, err
+	}
+	return documents, nil
 }
 
 func (s *DocumentService) Upload(
@@ -75,7 +84,8 @@ func (s *DocumentService) Upload(
 		UserID:       userID,
 		OriginalName: originalName,
 		Title:        originalName,              // Will be updated when we extract title from PDF
-		Content:      "[]",                      // Empty JSON array string, will be populated when PDF is processed
+		// Empty JSON array, will be populated when PDF is processed
+		Content:      json.RawMessage("[]"),
 		Metadata:     domain.DocumentMetadata{}, // Empty metadata
 		FilePath:     path,
 		FileSize:     totalSize,

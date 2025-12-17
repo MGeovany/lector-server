@@ -36,18 +36,11 @@ func (r *SupabaseDocumentRepository) Create(
 		return fmt.Errorf("supabase client not initialized")
 	}
 
-	// Serializar campos complejos
-	// Content is already a JSON string, validate it's valid JSON
+	// Serialize complex fields
+	// Content is stored as raw JSON (e.g. an array of blocks)
 	var contentJSON []byte
-	if document.Content != "" {
-		// Validate it's valid JSON by trying to unmarshal and remarshal
-		var contentInterface interface{}
-		if err := json.Unmarshal([]byte(document.Content), &contentInterface); err != nil {
-			// If not valid JSON, wrap it as a JSON string
-			contentJSON = []byte(document.Content)
-		} else {
-			contentJSON = []byte(document.Content)
-		}
+	if len(document.Content) > 0 {
+		contentJSON = document.Content
 	} else {
 		contentJSON = []byte("[]")
 	}
@@ -154,7 +147,7 @@ func (r *SupabaseDocumentRepository) GetByUserID(userID string, token string) ([
 	return documents, nil
 }
 
-// Update updates a document in Supabase
+// Update a document in Supabase
 func (r *SupabaseDocumentRepository) Update(document *domain.Document, token string) error {
 	client, err := r.supabaseClient.GetClientWithToken(token)
 	if err != nil {
@@ -164,9 +157,12 @@ func (r *SupabaseDocumentRepository) Update(document *domain.Document, token str
 		return fmt.Errorf("supabase client not initialized")
 	}
 
-	contentJSON, err := json.Marshal(document.Content)
-	if err != nil {
-		return fmt.Errorf("failed to marshal content: %w", err)
+	// Content is already JSON; if empty, store an empty array
+	var contentJSON []byte
+	if len(document.Content) > 0 {
+		contentJSON = document.Content
+	} else {
+		contentJSON = []byte("[]")
 	}
 
 	metadataJSON, err := json.Marshal(document.Metadata)
@@ -269,9 +265,8 @@ func (r *SupabaseDocumentRepository) mapToDocument(data map[string]interface{}) 
 
 	// Parse JSON fields
 	if contentStr := getString(data, "content"); contentStr != "" {
-		if err := json.Unmarshal([]byte(contentStr), &document.Content); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal content: %w", err)
-		}
+		// Store raw JSON from Supabase into the document
+		document.Content = json.RawMessage(contentStr)
 	}
 
 	if metadataStr := getString(data, "metadata"); metadataStr != "" {

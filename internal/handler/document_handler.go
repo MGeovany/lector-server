@@ -24,16 +24,30 @@ func NewDocumentHandler(documentService domain.DocumentService, logger domain.Lo
 	}
 }
 
-// GetDocuments handles getting user documents
-func (h *DocumentHandler) GetDocuments(w http.ResponseWriter, r *http.Request) {
-	user, ok := GetUserFromContext(r)
-	if !ok {
-		h.writeError(w, http.StatusUnauthorized, "User not found in context")
+// Get Documents by User ID
+func (h *DocumentHandler) GetDocumentsByUserID(w http.ResponseWriter, r *http.Request) {
+
+	vars := mux.Vars(r)
+	userID := vars["id"]
+
+	if userID == "" {
+		h.writeError(w, http.StatusBadRequest, "User ID is required")
 		return
 	}
 
-	fmt.Println(user)
+	token, ok := GetTokenFromContext(r)
+	if !ok {
+		h.writeError(w, http.StatusUnauthorized, "Token not found in context")
+		return
+	}
 
+	documents, err := h.documentService.GetDocumentsByUserID(userID, token)
+	if err != nil {
+		h.writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	h.writeJSON(w, http.StatusOK, documents)
 }
 
 // UploadDocument handles document upload
