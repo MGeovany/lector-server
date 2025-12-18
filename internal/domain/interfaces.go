@@ -47,18 +47,18 @@ type DocumentRepository interface {
 
 // PreferenceService defines the interface for user preference operations
 type PreferenceService interface {
-	GetPreferences(userID string) (*UserPreferences, error)
-	UpdatePreferences(userID string, prefs *UserPreferences) error
-	GetReadingPosition(userID, documentID string) (*ReadingPosition, error)
-	UpdateReadingPosition(userID, documentID string, position *ReadingPosition) error
+	GetPreferences(userID string, token string) (*UserPreferences, error)
+	UpdatePreferences(userID string, prefs *UserPreferences, token string) error
+	GetReadingPosition(userID, documentID string, token string) (*ReadingPosition, error)
+	UpdateReadingPosition(userID, documentID string, position *ReadingPosition, token string) error
 }
 
 // PreferenceRepository defines the interface for preference data operations
 type PreferenceRepository interface {
-	GetPreferences(userID string) (*UserPreferences, error)
-	UpdatePreferences(prefs *UserPreferences) error
-	GetReadingPosition(userID, documentID string) (*ReadingPosition, error)
-	UpdateReadingPosition(position *ReadingPosition) error
+	GetPreferences(userID string, token string) (*UserPreferences, error)
+	UpdatePreferences(prefs *UserPreferences, token string) error
+	GetReadingPosition(userID, documentID string, token string) (*ReadingPosition, error)
+	UpdateReadingPosition(position *ReadingPosition, token string) error
 }
 
 // Session Management Interfaces

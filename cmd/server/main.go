@@ -31,6 +31,11 @@ func main() {
 		container,
 	)
 
+	preferenceHandler := handler.NewPreferenceHandler(
+		container,
+		container.Logger,
+	)
+
 	authMiddleware := handler.NewAuthMiddleware(
 		container.AuthService,
 		container.Logger,
@@ -40,6 +45,7 @@ func main() {
 	router := handler.NewRouter(
 		authHandler,
 		documentHandler,
+		preferenceHandler,
 		authMiddleware.Middleware,
 	)
 

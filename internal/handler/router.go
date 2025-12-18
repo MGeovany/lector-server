@@ -10,6 +10,7 @@ import (
 func NewRouter(
 	authHandler *AuthHandler,
 	documentHandler *DocumentHandler,
+	preferenceHandler *PreferenceHandler,
 	authMiddleware func(http.Handler) http.Handler,
 
 ) http.Handler {
@@ -41,6 +42,12 @@ func NewRouter(
 	protected.HandleFunc("/documents/{id}", documentHandler.DeleteDocument).Methods(http.MethodDelete)
 	protected.HandleFunc("/documents/search", documentHandler.SearchDocuments).Methods(http.MethodGet)
 	protected.HandleFunc("/documents/user/{id}", documentHandler.GetDocumentsByUserID).Methods(http.MethodGet)
+
+	// Preferences
+	protected.HandleFunc("/preferences", preferenceHandler.GetPreferences).Methods(http.MethodGet)
+	protected.HandleFunc("/preferences", preferenceHandler.UpdatePreferences).Methods(http.MethodPut)
+	protected.HandleFunc("/preferences/reading-position/{documentId}", preferenceHandler.GetReadingPosition).Methods(http.MethodGet)
+	protected.HandleFunc("/preferences/reading-position/{documentId}", preferenceHandler.UpdateReadingPosition).Methods(http.MethodPut)
 
 	// CORS
 	c := cors.New(cors.Options{

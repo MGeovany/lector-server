@@ -10,12 +10,13 @@ import (
 
 // Container holds all application dependencies
 type Container struct {
-	Config          domain.Config
-	Logger          domain.Logger
-	SupabaseClient  domain.SupabaseClient
-	DocumentService domain.DocumentService
-	AuthService     domain.AuthService
-	StorageService  domain.StorageService
+	Config           domain.Config
+	Logger           domain.Logger
+	SupabaseClient   domain.SupabaseClient
+	DocumentService  domain.DocumentService
+	AuthService      domain.AuthService
+	StorageService   domain.StorageService
+	PreferenceService domain.PreferenceService
 }
 
 // NewContainer creates a new dependency injection container
@@ -32,6 +33,11 @@ func NewContainer() *Container {
 
 	// Repositories
 	documentRepo := repository.NewSupabaseDocumentRepository(
+		supabaseClient,
+		log,
+	)
+
+	preferenceRepo := repository.NewSupabasePreferenceRepository(
 		supabaseClient,
 		log,
 	)
@@ -54,12 +60,18 @@ func NewContainer() *Container {
 		log,
 	)
 
+	preferenceService := service.NewPreferenceService(
+		preferenceRepo,
+		log,
+	)
+
 	return &Container{
-		Config:          cfg,
-		Logger:          log,
-		SupabaseClient:  supabaseClient,
-		DocumentService: documentService,
-		AuthService:     authService,
-		StorageService:  storageService,
+		Config:            cfg,
+		Logger:            log,
+		SupabaseClient:    supabaseClient,
+		DocumentService:   documentService,
+		AuthService:       authService,
+		StorageService:    storageService,
+		PreferenceService: preferenceService,
 	}
 }

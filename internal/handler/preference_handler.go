@@ -20,8 +20,9 @@ type PreferenceHandler struct {
 // NewPreferenceHandler creates a new preference handler
 func NewPreferenceHandler(container *config.Container, logger domain.Logger) *PreferenceHandler {
 	return &PreferenceHandler{
-		container: container,
-		logger:    logger,
+		container:         container,
+		logger:             logger,
+		preferenceService: container.PreferenceService,
 	}
 }
 
@@ -33,7 +34,13 @@ func (h *PreferenceHandler) GetPreferences(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	preferences, err := h.preferenceService.GetPreferences(user.ID)
+	token, ok := GetTokenFromContext(r)
+	if !ok {
+		h.writeError(w, http.StatusUnauthorized, "Token not found in context")
+		return
+	}
+
+	preferences, err := h.preferenceService.GetPreferences(user.ID, token)
 	if err != nil {
 		h.logger.Error("Failed to get preferences", err, "user_id", user.ID)
 		h.writeError(w, http.StatusInternalServerError, "Failed to retrieve preferences")
@@ -45,12 +52,55 @@ func (h *PreferenceHandler) GetPreferences(w http.ResponseWriter, r *http.Reques
 
 // UpdatePreferences handles updating user preferences
 func (h *PreferenceHandler) UpdatePreferences(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement update preferences logic
-	h.writeError(w, http.StatusNotImplemented, "Update preferences not implemented yet")
+	user, ok := GetUserFromContext(r)
+	if !ok {
+		h.writeError(w, http.StatusUnauthorized, "User not found in context")
+		return
+	}
+
+	token, ok := GetTokenFromContext(r)
+	if !ok {
+		h.writeError(w, http.StatusUnauthorized, "Token not found in context")
+		return
+	}
+
+	var prefs domain.UserPreferences
+	if err := json.NewDecoder(r.Body).Decode(&prefs); err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if err := h.preferenceService.UpdatePreferences(user.ID, &prefs, token); err != nil {
+		h.logger.Error("Failed to update preferences", err, "user_id", user.ID)
+		h.writeError(w, http.StatusInternalServerError, "Failed to update preferences")
+		return
+	}
+
+	// Get updated preferences to return
+	updatedPrefs, err := h.preferenceService.GetPreferences(user.ID, token)
+	if err != nil {
+		h.logger.Error("Failed to get updated preferences", err, "user_id", user.ID)
+		h.writeError(w, http.StatusInternalServerError, "Failed to retrieve updated preferences")
+		return
+	}
+
+	h.writeJSON(w, http.StatusOK, updatedPrefs)
 }
 
 // GetReadingPosition handles getting reading position for a document
 func (h *PreferenceHandler) GetReadingPosition(w http.ResponseWriter, r *http.Request) {
+	user, ok := GetUserFromContext(r)
+	if !ok {
+		h.writeError(w, http.StatusUnauthorized, "User not found in context")
+		return
+	}
+
+	token, ok := GetTokenFromContext(r)
+	if !ok {
+		h.writeError(w, http.StatusUnauthorized, "Token not found in context")
+		return
+	}
+
 	vars := mux.Vars(r)
 	documentID := vars["documentId"]
 
@@ -59,12 +109,30 @@ func (h *PreferenceHandler) GetReadingPosition(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// TODO: Implement get reading position logic
-	h.writeError(w, http.StatusNotImplemented, "Get reading position not implemented yet")
+	position, err := h.preferenceService.GetReadingPosition(user.ID, documentID, token)
+	if err != nil {
+		h.logger.Error("Failed to get reading position", err, "user_id", user.ID, "document_id", documentID)
+		h.writeError(w, http.StatusInternalServerError, "Failed to retrieve reading position")
+		return
+	}
+
+	h.writeJSON(w, http.StatusOK, position)
 }
 
 // UpdateReadingPosition handles updating reading position for a document
 func (h *PreferenceHandler) UpdateReadingPosition(w http.ResponseWriter, r *http.Request) {
+	user, ok := GetUserFromContext(r)
+	if !ok {
+		h.writeError(w, http.StatusUnauthorized, "User not found in context")
+		return
+	}
+
+	token, ok := GetTokenFromContext(r)
+	if !ok {
+		h.writeError(w, http.StatusUnauthorized, "Token not found in context")
+		return
+	}
+
 	vars := mux.Vars(r)
 	documentID := vars["documentId"]
 
@@ -73,8 +141,27 @@ func (h *PreferenceHandler) UpdateReadingPosition(w http.ResponseWriter, r *http
 		return
 	}
 
-	// TODO: Implement update reading position logic
-	h.writeError(w, http.StatusNotImplemented, "Update reading position not implemented yet")
+	var position domain.ReadingPosition
+	if err := json.NewDecoder(r.Body).Decode(&position); err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if err := h.preferenceService.UpdateReadingPosition(user.ID, documentID, &position, token); err != nil {
+		h.logger.Error("Failed to update reading position", err, "user_id", user.ID, "document_id", documentID)
+		h.writeError(w, http.StatusInternalServerError, "Failed to update reading position")
+		return
+	}
+
+	// Get updated position to return
+	updatedPosition, err := h.preferenceService.GetReadingPosition(user.ID, documentID, token)
+	if err != nil {
+		h.logger.Error("Failed to get updated reading position", err, "user_id", user.ID, "document_id", documentID)
+		h.writeError(w, http.StatusInternalServerError, "Failed to retrieve updated reading position")
+		return
+	}
+
+	h.writeJSON(w, http.StatusOK, updatedPosition)
 }
 
 // writeError writes an error response

@@ -22,8 +22,12 @@ func NewSupabasePreferenceRepository(supabaseClient domain.SupabaseClient, logge
 }
 
 // GetPreferences retrieves user preferences from Supabase
-func (r *SupabasePreferenceRepository) GetPreferences(userID string) (*domain.UserPreferences, error) {
-	client := r.supabaseClient.DB()
+func (r *SupabasePreferenceRepository) GetPreferences(userID string, token string) (*domain.UserPreferences, error) {
+	// Use client with token for RLS policies
+	client, err := r.supabaseClient.GetClientWithToken(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client with token: %w", err)
+	}
 	if client == nil {
 		return nil, fmt.Errorf("supabase client not initialized")
 	}
@@ -59,8 +63,12 @@ func (r *SupabasePreferenceRepository) GetPreferences(userID string) (*domain.Us
 }
 
 // UpdatePreferences updates or creates user preferences in Supabase
-func (r *SupabasePreferenceRepository) UpdatePreferences(prefs *domain.UserPreferences) error {
-	client := r.supabaseClient.DB()
+func (r *SupabasePreferenceRepository) UpdatePreferences(prefs *domain.UserPreferences, token string) error {
+	// Use client with token for RLS policies
+	client, err := r.supabaseClient.GetClientWithToken(token)
+	if err != nil {
+		return fmt.Errorf("failed to get client with token: %w", err)
+	}
 	if client == nil {
 		return fmt.Errorf("supabase client not initialized")
 	}
@@ -78,7 +86,7 @@ func (r *SupabasePreferenceRepository) UpdatePreferences(prefs *domain.UserPrefe
 	}
 
 	// Use upsert to insert or update
-	_, _, err := client.From("user_preferences").
+	_, _, err = client.From("user_preferences").
 		Upsert(data, "", "", "").
 		Execute()
 	if err != nil {
@@ -90,8 +98,12 @@ func (r *SupabasePreferenceRepository) UpdatePreferences(prefs *domain.UserPrefe
 }
 
 // GetReadingPosition retrieves reading position for a document from Supabase
-func (r *SupabasePreferenceRepository) GetReadingPosition(userID, documentID string) (*domain.ReadingPosition, error) {
-	client := r.supabaseClient.DB()
+func (r *SupabasePreferenceRepository) GetReadingPosition(userID, documentID string, token string) (*domain.ReadingPosition, error) {
+	// Use client with token for RLS policies
+	client, err := r.supabaseClient.GetClientWithToken(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client with token: %w", err)
+	}
 	if client == nil {
 		return nil, fmt.Errorf("supabase client not initialized")
 	}
@@ -124,8 +136,12 @@ func (r *SupabasePreferenceRepository) GetReadingPosition(userID, documentID str
 }
 
 // UpdateReadingPosition updates or creates reading position in Supabase
-func (r *SupabasePreferenceRepository) UpdateReadingPosition(position *domain.ReadingPosition) error {
-	client := r.supabaseClient.DB()
+func (r *SupabasePreferenceRepository) UpdateReadingPosition(position *domain.ReadingPosition, token string) error {
+	// Use client with token for RLS policies
+	client, err := r.supabaseClient.GetClientWithToken(token)
+	if err != nil {
+		return fmt.Errorf("failed to get client with token: %w", err)
+	}
 	if client == nil {
 		return fmt.Errorf("supabase client not initialized")
 	}
@@ -139,7 +155,7 @@ func (r *SupabasePreferenceRepository) UpdateReadingPosition(position *domain.Re
 	}
 
 	// Use upsert to insert or update
-	_, _, err := client.From("reading_positions").
+	_, _, err = client.From("reading_positions").
 		Upsert(data, "", "", "").
 		Execute()
 	if err != nil {
