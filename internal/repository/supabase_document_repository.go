@@ -226,8 +226,8 @@ func (r *SupabaseDocumentRepository) removeProblematicUnicode(jsonStr string) st
 				// Remove control characters (0000-001F) and surrogates (D800-DFFF)
 				if (hexStr[0] == '0' && hexStr[1] == '0' && hexStr[2] <= '1') ||
 					(hexStr[0] == 'd' || hexStr[0] == 'D') && (hexStr[1] >= '8' && hexStr[1] <= 'f' || hexStr[1] >= '8' && hexStr[1] <= 'F') {
-					jsonStr = strings.ReplaceAll(jsonStr, match, "")
-				}
+				jsonStr = strings.ReplaceAll(jsonStr, match, "")
+			}
 			}
 		}
 		

@@ -248,7 +248,7 @@ func (p *PDFProcessor) sanitizeText(text string) string {
 				return cleaned // Return the cleaned string even if JSON unmarshal fails
 			}
 		} else {
-			return cleaned
+		return cleaned
 		}
 	}
 
