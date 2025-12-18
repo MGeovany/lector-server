@@ -17,18 +17,18 @@ type User struct {
 
 // Document represents a PDF document in the user's library
 type Document struct {
-	ID           string           `json:"id" db:"id"`
-	UserID       string           `json:"user_id" db:"user_id"`
-	OriginalName string           `json:"original_name" db:"original_name"`
-	Title        string           `json:"title" db:"title"`
+	ID           string `json:"id" db:"id"`
+	UserID       string `json:"user_id" db:"user_id"`
+	OriginalName string `json:"original_name" db:"original_name"`
+	Title        string `json:"title" db:"title"`
 	// Content is stored as raw JSON (typically an array of blocks)
 	// so that we can return it to the client without double-encoding.
-	Content      json.RawMessage  `json:"content" db:"content"`
-	Metadata     DocumentMetadata `json:"metadata" db:"metadata"`
-	FilePath     string           `json:"-" db:"file_path"`
-	FileSize     int64            `json:"file_size" db:"file_size"`
-	CreatedAt    time.Time        `json:"created_at" db:"created_at"`
-	UpdatedAt    time.Time        `json:"updated_at" db:"updated_at"`
+	Content   json.RawMessage  `json:"content" db:"content"`
+	Metadata  DocumentMetadata `json:"metadata" db:"metadata"`
+	FilePath  string           `json:"-" db:"file_path"`
+	FileSize  int64            `json:"file_size" db:"file_size"`
+	CreatedAt time.Time        `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time        `json:"updated_at" db:"updated_at"`
 }
 
 // UserPreferences represents user's reading preferences

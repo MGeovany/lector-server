@@ -9,14 +9,15 @@ import (
 
 	"pdf-text-reader/internal/domain"
 
-	"github.com/google/uuid"
 	"encoding/json"
+	"github.com/google/uuid"
 )
 
 type DocumentService struct {
-	storage StorageService
-	repo    domain.DocumentRepository
-	logger  domain.Logger
+	storage      StorageService
+	repo         domain.DocumentRepository
+	logger       domain.Logger
+	pdfProcessor *PDFProcessor
 }
 
 func NewDocumentService(
@@ -25,9 +26,10 @@ func NewDocumentService(
 	logger domain.Logger,
 ) *DocumentService {
 	return &DocumentService{
-		storage: storage,
-		repo:    repo,
-		logger:  logger,
+		storage:      storage,
+		repo:         repo,
+		logger:       logger,
+		pdfProcessor: NewPDFProcessor(logger),
 	}
 }
 
@@ -39,7 +41,15 @@ func (s *DocumentService) GetDocumentsByUserID(userID string, token string) ([]*
 	return documents, nil
 }
 
-func (s *DocumentService) DeleteDocument( documentID string, token string) error {
+func (s *DocumentService) GetDocument(documentID string, token string) (*domain.Document, error) {
+	document, err := s.repo.GetByID(documentID, token)
+	if err != nil {
+		return nil, err
+	}
+	return document, nil
+}
+
+func (s *DocumentService) DeleteDocument(documentID string, token string) error {
 	err := s.repo.Delete(documentID, token)
 	if err != nil {
 		return err
@@ -59,7 +69,7 @@ func (s *DocumentService) Upload(
 	// Path should be relative to bucket, not include bucket name
 	path := fmt.Sprintf("%s/%s.pdf", userID, docID)
 
-	// Read file to get size
+	// Read file to get size and content
 	fileBytes := make([]byte, 0)
 	buf := make([]byte, 1024)
 	var totalSize int64
@@ -87,14 +97,106 @@ func (s *DocumentService) Upload(
 		originalName = docID + ".pdf"
 	}
 
+	// Process PDF to extract text and metadata
+	// For small files, process immediately; for larger files, process in background
+	// Threshold: 2MB - files larger than this will be processed asynchronously
+	const asyncThreshold = 2 * 1024 * 1024 // 2MB
+
+	var contentJSON json.RawMessage
+	var metadata domain.DocumentMetadata
+	title := originalName
+
+	if totalSize < asyncThreshold {
+		// Process synchronously for small files
+		blocks, pdfMetadata, err := s.pdfProcessor.ProcessPDF(fileBytes)
+		if err != nil {
+			s.logger.Error("Failed to process PDF", err, "doc_id", docID)
+			contentJSON = json.RawMessage("[]")
+			metadata = domain.DocumentMetadata{}
+		} else {
+			contentJSON, err = s.pdfProcessor.ConvertToJSON(blocks)
+			if err != nil {
+				s.logger.Error("Failed to convert blocks to JSON", err, "doc_id", docID)
+				contentJSON = json.RawMessage("[]")
+			}
+
+			if pdfMetadata.Title != "" {
+				title = pdfMetadata.Title
+			}
+
+			metadata = domain.DocumentMetadata{
+				Author:      pdfMetadata.Author,
+				PageCount:   pdfMetadata.PageCount,
+				HasPassword: pdfMetadata.HasPassword,
+			}
+
+			s.logger.Info("Document processed synchronously",
+				"doc_id", docID,
+				"blocks_count", len(blocks),
+				"page_count", pdfMetadata.PageCount,
+			)
+		}
+	} else {
+		// For larger files, create document first and process in background
+		contentJSON = json.RawMessage("[]")
+		metadata = domain.DocumentMetadata{}
+
+		// Process in background goroutine
+		go func() {
+			blocks, pdfMetadata, err := s.pdfProcessor.ProcessPDF(fileBytes)
+			if err != nil {
+				s.logger.Error("Failed to process PDF in background", err, "doc_id", docID)
+				return
+			}
+
+			contentJSON, err := s.pdfProcessor.ConvertToJSON(blocks)
+			if err != nil {
+				s.logger.Error("Failed to convert blocks to JSON in background", err, "doc_id", docID)
+				return
+			}
+
+			// Determine title
+			docTitle := originalName
+			if pdfMetadata.Title != "" {
+				docTitle = pdfMetadata.Title
+			}
+
+			// Update document with processed content
+			updatedDoc := &domain.Document{
+				ID:      docID,
+				UserID:  userID,
+				Title:   docTitle,
+				Content: contentJSON,
+				Metadata: domain.DocumentMetadata{
+					Author:      pdfMetadata.Author,
+					PageCount:   pdfMetadata.PageCount,
+					HasPassword: pdfMetadata.HasPassword,
+				},
+				UpdatedAt: time.Now().UTC(),
+			}
+
+			if err := s.repo.Update(updatedDoc, token); err != nil {
+				s.logger.Error("Failed to update document with processed content", err, "doc_id", docID)
+				return
+			}
+
+			s.logger.Info("Document processed in background",
+				"doc_id", docID,
+				"blocks_count", len(blocks),
+				"page_count", pdfMetadata.PageCount,
+			)
+		}()
+
+		s.logger.Info("Document created, processing in background", "doc_id", docID, "file_size", totalSize)
+	}
+
 	doc := &domain.Document{
 		ID:           docID,
 		UserID:       userID,
 		OriginalName: originalName,
-		Title:        originalName,              // Will be updated when we extract title from PDF
-		// Empty JSON array, will be populated when PDF is processed
-		Content:      json.RawMessage("[]"),
-		Metadata:     domain.DocumentMetadata{}, // Empty metadata
+		Title:        title,
+		Content:      contentJSON,
+		Metadata:     metadata,
 		FilePath:     path,
 		FileSize:     totalSize,
 		CreatedAt:    now,
