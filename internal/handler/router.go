@@ -52,9 +52,12 @@ func NewRouter(
 	// CORS
 	c := cors.New(cors.Options{
 		AllowedOrigins: []string{
+			// Local development
 			"http://localhost:5173",
 			"http://localhost:4173",
 			"http://localhost:3000",
+			// Production frontend
+			"https://lector.thefndrs.com",
 		},
 		AllowedMethods: []string{
 			http.MethodGet,
