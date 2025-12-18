@@ -82,7 +82,7 @@ func (r *SupabasePreferenceRepository) UpdatePreferences(prefs *domain.UserPrefe
 		"line_height":      prefs.LineHeight,
 		"max_width":        prefs.MaxWidth,
 		"theme":            prefs.Theme,
-		"updated_at":       prefs.UpdatedAt,
+		// Don't send updated_at - the database trigger will handle it
 	}
 
 	// Use upsert to insert or update
@@ -151,7 +151,7 @@ func (r *SupabasePreferenceRepository) UpdateReadingPosition(position *domain.Re
 		"document_id": position.DocumentID,
 		"position":    position.Position,
 		"page_number": position.PageNumber,
-		"updated_at":  position.UpdatedAt,
+		// Don't send updated_at - the database trigger will handle it
 	}
 
 	// Use upsert to insert or update
@@ -225,3 +225,5 @@ func getFloat64(data map[string]interface{}, key string) float64 {
 	}
 	return 0.0
 }
+
+// getString is defined in supabase_document_repository.go and shared across the package
