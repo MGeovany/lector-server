@@ -21,7 +21,7 @@ type PreferenceHandler struct {
 func NewPreferenceHandler(container *config.Container, logger domain.Logger) *PreferenceHandler {
 	return &PreferenceHandler{
 		container:         container,
-		logger:             logger,
+		logger:            logger,
 		preferenceService: container.PreferenceService,
 	}
 }

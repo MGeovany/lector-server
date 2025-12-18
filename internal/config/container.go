@@ -10,12 +10,12 @@ import (
 
 // Container holds all application dependencies
 type Container struct {
-	Config           domain.Config
-	Logger           domain.Logger
-	SupabaseClient   domain.SupabaseClient
-	DocumentService  domain.DocumentService
-	AuthService      domain.AuthService
-	StorageService   domain.StorageService
+	Config            domain.Config
+	Logger            domain.Logger
+	SupabaseClient    domain.SupabaseClient
+	DocumentService   domain.DocumentService
+	AuthService       domain.AuthService
+	StorageService    domain.StorageService
 	PreferenceService domain.PreferenceService
 }
 

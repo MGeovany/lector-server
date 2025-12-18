@@ -93,7 +93,7 @@ func (r *SupabaseDocumentRepository) Create(
 	// This is critical to avoid PostgreSQL 22P05 errors
 	cleanedContentJSON := r.removeProblematicUnicode(contentJSONStr)
 	cleanedMetadataJSON := r.removeProblematicUnicode(metadataJSONStr)
-	
+
 	// Parse back to interface{} and re-marshal to ensure clean JSON
 	// This double-pass ensures that any problematic sequences are removed
 	var contentData interface{}
@@ -115,7 +115,7 @@ func (r *SupabaseDocumentRepository) Create(
 			}
 		}
 	}
-	
+
 	var metadataData interface{}
 	if err := json.Unmarshal([]byte(cleanedMetadataJSON), &metadataData); err != nil {
 		r.logger.Warn("Failed to parse cleaned metadata JSON for insert", "error", err)
@@ -135,7 +135,7 @@ func (r *SupabaseDocumentRepository) Create(
 			}
 		}
 	}
-	
+
 	// Final validation: serialize the entire data structure to JSON, clean it, and re-parse
 	// This ensures that the client won't introduce problematic Unicode sequences
 	tempData := map[string]interface{}{
@@ -150,24 +150,24 @@ func (r *SupabaseDocumentRepository) Create(
 		"created_at":    document.CreatedAt,
 		"updated_at":    document.UpdatedAt,
 	}
-	
+
 	// Serialize to JSON to check for problematic sequences
 	tempJSON, err := json.Marshal(tempData)
 	if err != nil {
 		r.logger.Error("Failed to marshal data for validation", err, "doc_id", document.ID)
 		return fmt.Errorf("failed to marshal data: %w", err)
 	}
-	
+
 	// Clean the JSON string
 	cleanedTempJSON := r.removeProblematicUnicode(string(tempJSON))
-	
+
 	// Parse back to ensure it's valid
 	var finalData map[string]interface{}
 	if err := json.Unmarshal([]byte(cleanedTempJSON), &finalData); err != nil {
 		r.logger.Error("Failed to unmarshal cleaned data", err, "doc_id", document.ID)
 		return fmt.Errorf("failed to validate cleaned JSON: %w", err)
 	}
-	
+
 	// Use the cleaned and validated data
 	_, _, err = client.From("documents").Insert(finalData, false, "", "", "").Execute()
 	if err != nil {
@@ -197,20 +197,20 @@ func (r *SupabaseDocumentRepository) removeProblematicUnicode(jsonStr string) st
 	// These are the most common cause of PostgreSQL 22P05 errors
 	reControlChars := regexp.MustCompile(`\\u00[0-1][0-9a-fA-F]`)
 	jsonStr = reControlChars.ReplaceAllString(jsonStr, "")
-	
+
 	// Remove surrogate pairs (0xD800-0xDFFF) which are invalid in JSON
 	reSurrogates := regexp.MustCompile(`\\u[dD][89aAbBcCdDeEfF][0-9a-fA-F]{2}`)
 	jsonStr = reSurrogates.ReplaceAllString(jsonStr, "")
-	
+
 	// Remove any remaining problematic Unicode escapes that might cause issues
 	// Specifically target sequences that PostgreSQL might reject
 	reProblematic := regexp.MustCompile(`\\u000[0-9a-fA-F]|\\u00[01][0-9a-fA-F]|\\u001[0-9a-fA-F]`)
 	jsonStr = reProblematic.ReplaceAllString(jsonStr, "")
-	
+
 	// Remove any literal NULL bytes and other control characters
 	jsonStr = strings.ReplaceAll(jsonStr, "\x00", "")
 	jsonStr = strings.ReplaceAll(jsonStr, "\u0000", "")
-	
+
 	// Verify the cleaned JSON is still valid
 	var verify interface{}
 	if err := json.Unmarshal([]byte(jsonStr), &verify); err != nil {
@@ -226,11 +226,11 @@ func (r *SupabaseDocumentRepository) removeProblematicUnicode(jsonStr string) st
 				// Remove control characters (0000-001F) and surrogates (D800-DFFF)
 				if (hexStr[0] == '0' && hexStr[1] == '0' && hexStr[2] <= '1') ||
 					(hexStr[0] == 'd' || hexStr[0] == 'D') && (hexStr[1] >= '8' && hexStr[1] <= 'f' || hexStr[1] >= '8' && hexStr[1] <= 'F') {
-				jsonStr = strings.ReplaceAll(jsonStr, match, "")
-			}
+					jsonStr = strings.ReplaceAll(jsonStr, match, "")
+				}
 			}
 		}
-		
+
 		// Try to unmarshal again
 		if err := json.Unmarshal([]byte(jsonStr), &verify); err != nil {
 			// Last resort: remove ALL Unicode escapes and let Go re-encode
@@ -239,7 +239,7 @@ func (r *SupabaseDocumentRepository) removeProblematicUnicode(jsonStr string) st
 			})
 		}
 	}
-	
+
 	return jsonStr
 }
 

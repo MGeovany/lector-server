@@ -219,16 +219,16 @@ func (p *PDFProcessor) sanitizeText(text string) string {
 
 	// Check if the JSON contains problematic Unicode escape sequences
 	jsonStr := string(testJSON)
-	
+
 	// Remove all control character Unicode escapes (0000-001F) that PostgreSQL rejects
 	// Use regex to match \u followed by 0000-001F
 	re := regexp.MustCompile(`\\u00[0-1][0-9a-fA-F]`)
 	jsonStr = re.ReplaceAllString(jsonStr, "")
-	
+
 	// Remove surrogate pairs (D800-DFFF) which are invalid in JSON
 	reSurrogates := regexp.MustCompile(`\\u[dD][89aAbBcCdDeEfF][0-9a-fA-F]{2}`)
 	jsonStr = reSurrogates.ReplaceAllString(jsonStr, "")
-	
+
 	// Remove any literal NULL bytes
 	jsonStr = strings.ReplaceAll(jsonStr, "\x00", "")
 
@@ -248,7 +248,7 @@ func (p *PDFProcessor) sanitizeText(text string) string {
 				return cleaned // Return the cleaned string even if JSON unmarshal fails
 			}
 		} else {
-		return cleaned
+			return cleaned
 		}
 	}
 
@@ -266,15 +266,15 @@ func (p *PDFProcessor) ConvertToJSON(blocks []TextBlock) (json.RawMessage, error
 
 	// Remove problematic Unicode escape sequences that PostgreSQL rejects
 	jsonStr := string(jsonBytes)
-	
+
 	// Remove all control character Unicode escapes (0000-001F)
 	reControlChars := regexp.MustCompile(`\\u00[0-1][0-9a-fA-F]`)
 	jsonStr = reControlChars.ReplaceAllString(jsonStr, "")
-	
+
 	// Remove surrogate pairs (D800-DFFF) which are invalid in JSON
 	reSurrogates := regexp.MustCompile(`\\u[dD][89aAbBcCdDeEfF][0-9a-fA-F]{2}`)
 	jsonStr = reSurrogates.ReplaceAllString(jsonStr, "")
-	
+
 	// Remove any literal NULL bytes
 	jsonStr = strings.ReplaceAll(jsonStr, "\x00", "")
 	jsonStr = strings.ReplaceAll(jsonStr, "\\u0000", "")
@@ -297,7 +297,7 @@ func (p *PDFProcessor) ConvertToJSON(blocks []TextBlock) (json.RawMessage, error
 			}
 			return match // Keep other Unicode escapes
 		})
-		
+
 		// Try unmarshaling again
 		if err := json.Unmarshal([]byte(jsonStr), &verify); err != nil {
 			p.logger.Warn("Failed to verify cleaned JSON after aggressive cleaning", "error", err)

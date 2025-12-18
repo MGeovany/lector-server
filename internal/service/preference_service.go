@@ -45,4 +45,3 @@ func (s *preferenceService) UpdateReadingPosition(userID, documentID string, pos
 	position.UpdatedAt = time.Now()
 	return s.preferenceRepo.UpdateReadingPosition(position, token)
 }
-
