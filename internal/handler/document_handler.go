@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"pdf-text-reader/internal/domain"
 
@@ -67,8 +68,8 @@ func (h *DocumentHandler) UploadDocument(w http.ResponseWriter, r *http.Request)
 	defer file.Close()
 
 	// Validate file size
-	if header.Size > 10<<20 { // 10MB
-		h.writeError(w, 400, "File too large")
+	if header.Size > 15<<20 { // 15MB single file limit
+		h.writeError(w, http.StatusBadRequest, "File too large. Maximum single file size is 15MB.")
 		return
 	}
 
@@ -86,7 +87,12 @@ func (h *DocumentHandler) UploadDocument(w http.ResponseWriter, r *http.Request)
 		header.Filename,
 	)
 	if err != nil {
-		h.writeError(w, 500, err.Error())
+		// If the error message mentions storage limit, return 400 with friendly text
+		if strings.Contains(err.Error(), "storage limit exceeded") {
+			h.writeError(w, http.StatusBadRequest, "Storage limit reached. Please delete some documents or contact support to increase your storage.")
+			return
+		}
+		h.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 

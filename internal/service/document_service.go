@@ -65,6 +65,8 @@ func (s *DocumentService) Upload(
 	originalName string,
 ) (*domain.Document, error) {
 
+	const maxUserStorage = 15 * 1024 * 1024 // 15MB
+
 	docID := uuid.New().String()
 	// Path should be relative to bucket, not include bucket name
 	path := fmt.Sprintf("%s/%s.pdf", userID, docID)
@@ -82,6 +84,22 @@ func (s *DocumentService) Upload(
 		if err != nil {
 			break
 		}
+	}
+
+	// Enforce per-user storage quota BEFORE uploading to storage
+	// Get current documents to calculate total storage used
+	existingDocs, err := s.repo.GetByUserID(userID, token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to calculate current storage usage: %w", err)
+	}
+
+	var currentUsage int64
+	for _, d := range existingDocs {
+		currentUsage += d.FileSize
+	}
+
+	if currentUsage+totalSize > maxUserStorage {
+		return nil, fmt.Errorf("storage limit exceeded: user has %d bytes used, upload would exceed %d bytes", currentUsage, maxUserStorage)
 	}
 
 	// Upload file (need to create new reader from bytes)
