@@ -141,13 +141,13 @@ func (r *DocumentRepository) Create(
 	// Final validation: serialize the entire data structure to JSON, clean it, and re-parse
 	// This ensures that the client won't introduce problematic Unicode sequences
 	tempData := map[string]interface{}{
-		"id":          document.ID,
-		"user_id":     document.UserID,
-		"title":       document.Title,
-		"content":     contentData,
-		"metadata":    metadataData,
-		"created_at":  document.CreatedAt,
-		"updated_at":  document.UpdatedAt,
+		"id":         document.ID,
+		"user_id":    document.UserID,
+		"title":      document.Title,
+		"content":    contentData,
+		"metadata":   metadataData,
+		"created_at": document.CreatedAt,
+		"updated_at": document.UpdatedAt,
 	}
 
 	// Add optional fields if they exist
@@ -647,7 +647,7 @@ func (r *DocumentRepository) mapToDocument(data map[string]interface{}) (*domain
 		Title:       getString(data, "title"),
 		Author:      getStringPointer(data, "author"),
 		Description: getStringPointer(data, "description"),
-	}	
+	}
 
 	// Parse timestamps
 	if createdAt := getString(data, "created_at"); createdAt != "" {

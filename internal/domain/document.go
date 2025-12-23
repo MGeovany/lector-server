@@ -9,8 +9,8 @@ import (
 
 // ReadingPosition represents a user's reading state for a document.
 type ReadingPosition struct {
-	UserID     string  `json:"user_id"`
-	DocumentID string  `json:"document_id"`
+	UserID     string `json:"user_id"`
+	DocumentID string `json:"document_id"`
 
 	Progress   float32 `json:"progress"`
 	PageNumber int     `json:"page_number"`
@@ -39,9 +39,9 @@ type Document struct {
 	Author      *string `json:"author,omitempty"`
 	Description *string `json:"description,omitempty"`
 
-	Content  json.RawMessage   `json:"content"`
-	Metadata DocumentMetadata   `json:"metadata"`
-	Tag      *string           `json:"tag,omitempty"` // Single tag (document can only have one tag)
+	Content  json.RawMessage  `json:"content"`
+	Metadata DocumentMetadata `json:"metadata"`
+	Tag      *string          `json:"tag,omitempty"` // Single tag (document can only have one tag)
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`

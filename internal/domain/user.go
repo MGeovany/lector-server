@@ -25,12 +25,12 @@ type SupabaseUser struct {
 
 // UserPreferences represents user's reading preferences
 type UserPreferences struct {
-	UserID     string
-	FontSize   int
-	FontFamily string
-	Theme      string
-	Tags       []string
-	UpdatedAt  time.Time
+	UserID     string    `json:"user_id"`
+	FontSize   int       `json:"font_size"`
+	FontFamily string    `json:"font_family"`
+	Theme      string    `json:"theme"`
+	Tags       []string  `json:"tags"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 type UserPreferencesService interface {

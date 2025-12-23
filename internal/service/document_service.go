@@ -329,14 +329,14 @@ func (s *DocumentService) Upload(
 	}
 
 	doc := &domain.DocumentData{
-		ID:          docID,
-		UserID:      userID,
-		Title:       title,
-		Author:      author,
-		Content:     contentJSON,
-		Metadata:    metadata,
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		ID:        docID,
+		UserID:    userID,
+		Title:     title,
+		Author:    author,
+		Content:   contentJSON,
+		Metadata:  metadata,
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 
 	if err := s.repo.Create(doc, token); err != nil {
