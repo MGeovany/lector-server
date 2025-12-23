@@ -12,19 +12,22 @@ import (
 
 // DocumentHandler handles document-related HTTP requests
 type DocumentHandler struct {
-	documentService domain.DocumentService
-	logger          domain.Logger
+	documentService   domain.DocumentService
+	preferenceService domain.UserPreferencesService
+	logger            domain.Logger
 }
 
 // NewDocumentHandler creates a new document handler
-func NewDocumentHandler(documentService domain.DocumentService, logger domain.Logger) *DocumentHandler {
+func NewDocumentHandler(documentService domain.DocumentService, preferenceService domain.UserPreferencesService, logger domain.Logger) *DocumentHandler {
 	return &DocumentHandler{
-		documentService: documentService,
-		logger:          logger,
+		documentService:   documentService,
+		preferenceService: preferenceService,
+		logger:            logger,
 	}
 }
 
 // Get Documents by User ID
+
 func (h *DocumentHandler) GetDocumentsByUserID(w http.ResponseWriter, r *http.Request) {
 
 	vars := mux.Vars(r)
@@ -48,6 +51,87 @@ func (h *DocumentHandler) GetDocumentsByUserID(w http.ResponseWriter, r *http.Re
 	}
 
 	h.writeJSON(w, http.StatusOK, documents)
+}
+
+// GetLibrary handles getting the complete library data (documents + positions)
+// DEPRECATED: Use getDocumentsByUserID instead
+func (h *DocumentHandler) GetLibrary(w http.ResponseWriter, r *http.Request) {
+	user, ok := GetUserFromContext(r)
+	if !ok {
+		h.writeError(w, http.StatusUnauthorized, "User not found in context")
+		return
+	}
+
+	token, ok := GetTokenFromContext(r)
+	if !ok {
+		h.writeError(w, http.StatusUnauthorized, "Token not found in context")
+		return
+	}
+
+	// Get documents and positions in parallel
+	documentsChan := make(chan []*domain.Document, 1)
+	positionsChan := make(chan map[string]*domain.ReadingPosition, 1)
+	errChan := make(chan error, 2)
+
+	go func() {
+		docs, err := h.documentService.GetDocumentsByUserID(user.ID, token)
+		if err != nil {
+			errChan <- err
+			return
+		}
+		documentsChan <- docs
+	}()
+
+	go func() {
+		positions, err := h.preferenceService.GetAllReadingPositions(user.ID, token)
+		if err != nil {
+			// If positions fail, return empty map (not critical)
+			positionsChan <- make(map[string]*domain.ReadingPosition)
+			return
+		}
+		positionsChan <- positions
+	}()
+
+	// Wait for all results
+	var documents []*domain.Document
+	var positions map[string]*domain.ReadingPosition
+	received := 0
+
+	for received < 2 {
+		select {
+		case err := <-errChan:
+			if err != nil {
+				h.logger.Error("Failed to load library data", err, "user_id", user.ID)
+				h.writeError(w, http.StatusInternalServerError, "Failed to load library data")
+				return
+			}
+			received++
+		case docs := <-documentsChan:
+			documents = docs
+			received++
+		case pos := <-positionsChan:
+			positions = pos
+			received++
+		}
+	}
+
+	// Combine documents with positions
+	documentsWithPositions := make([]domain.DocumentWithPosition, 0, len(documents))
+	for _, doc := range documents {
+		docWithPos := domain.DocumentWithPosition{
+			DocumentData: doc,
+		}
+		if pos, ok := positions[doc.ID]; ok {
+			docWithPos.ReadingPosition = pos
+		}
+		documentsWithPositions = append(documentsWithPositions, docWithPos)
+	}
+
+	response := domain.LibraryResponse{
+		Documents: documentsWithPositions,
+	}
+
+	h.writeJSON(w, http.StatusOK, response)
 }
 
 // UploadDocument handles document upload
@@ -141,6 +225,54 @@ func (h *DocumentHandler) GetDocument(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, http.StatusOK, cleanDoc)
 }
 
+type updateDocumentRequest struct {
+	Title  *string `json:"title"`
+	Author *string `json:"author"`
+	Tag    *string `json:"tag"` // Single tag (document can only have one tag)
+}
+
+// UpdateDocument updates title/author/tag for a document
+func (h *DocumentHandler) UpdateDocument(w http.ResponseWriter, r *http.Request) {
+	user, ok := GetUserFromContext(r)
+	if !ok {
+		h.writeError(w, http.StatusUnauthorized, "User not found in context")
+		return
+	}
+
+	vars := mux.Vars(r)
+	documentID := vars["id"]
+	if documentID == "" {
+		h.writeError(w, http.StatusBadRequest, "Document ID is required")
+		return
+	}
+
+	token, ok := GetTokenFromContext(r)
+	if !ok {
+		h.writeError(w, http.StatusUnauthorized, "Token not found in context")
+		return
+	}
+
+	var req updateDocumentRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.Title == nil && req.Author == nil && req.Tag == nil {
+		h.writeError(w, http.StatusBadRequest, "No updates provided")
+		return
+	}
+
+	updated, err := h.documentService.UpdateDocumentDetails(user.ID, documentID, req.Title, req.Author, req.Tag, token)
+	if err != nil {
+		h.writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	cleanDoc := h.cleanDocumentForResponse(updated)
+	h.writeJSON(w, http.StatusOK, cleanDoc)
+}
+
 // DeleteDocument handles document deletion
 func (h *DocumentHandler) DeleteDocument(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
@@ -168,14 +300,141 @@ func (h *DocumentHandler) DeleteDocument(w http.ResponseWriter, r *http.Request)
 
 // SearchDocuments handles document search
 func (h *DocumentHandler) SearchDocuments(w http.ResponseWriter, r *http.Request) {
+	user, ok := GetUserFromContext(r)
+	if !ok {
+		h.writeError(w, http.StatusUnauthorized, "User not found in context")
+		return
+	}
+
 	query := r.URL.Query().Get("q")
 	if query == "" {
 		h.writeError(w, http.StatusBadRequest, "Search query is required")
 		return
 	}
 
-	// TODO: Implement search documents logic
-	h.writeError(w, http.StatusNotImplemented, "Search documents not implemented yet")
+	token, ok := GetTokenFromContext(r)
+	if !ok {
+		h.writeError(w, http.StatusUnauthorized, "Token not found in context")
+		return
+	}
+
+	documents, err := h.documentService.SearchDocuments(user.ID, query, token)
+	if err != nil {
+		h.logger.Error("Failed to search documents", err, "user_id", user.ID, "query", query)
+		h.writeError(w, http.StatusInternalServerError, "Failed to search documents")
+		return
+	}
+
+	// Clean documents before returning
+	var cleanDocs []*domain.Document
+	for _, doc := range documents {
+		cleanDocs = append(cleanDocs, h.cleanDocumentForResponse(doc))
+	}
+
+	h.writeJSON(w, http.StatusOK, cleanDocs)
+}
+
+// GetDocumentTags handles getting all document tags for the authenticated user
+func (h *DocumentHandler) GetDocumentTags(w http.ResponseWriter, r *http.Request) {
+	user, ok := GetUserFromContext(r)
+	if !ok {
+		h.writeError(w, http.StatusUnauthorized, "User not found in context")
+		return
+	}
+
+	token, ok := GetTokenFromContext(r)
+	if !ok {
+		h.writeError(w, http.StatusUnauthorized, "Token not found in context")
+		return
+	}
+
+	tags, err := h.documentService.GetDocumentTags(user.ID, token)
+	if err != nil {
+		h.logger.Error("Failed to get document tags", err, "user_id", user.ID)
+		h.writeError(w, http.StatusInternalServerError, "Failed to get document tags")
+		return
+	}
+
+	h.writeJSON(w, http.StatusOK, tags)
+}
+
+type createTagRequest struct {
+	Name string `json:"name"`
+}
+
+// CreateTag handles creating a new tag for the authenticated user
+func (h *DocumentHandler) CreateTag(w http.ResponseWriter, r *http.Request) {
+	user, ok := GetUserFromContext(r)
+	if !ok {
+		h.writeError(w, http.StatusUnauthorized, "User not found in context")
+		return
+	}
+
+	token, ok := GetTokenFromContext(r)
+	if !ok {
+		h.writeError(w, http.StatusUnauthorized, "Token not found in context")
+		return
+	}
+
+	var req createTagRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.Name == "" {
+		h.writeError(w, http.StatusBadRequest, "Tag name is required")
+		return
+	}
+
+	err := h.documentService.CreateTag(user.ID, req.Name, token)
+	if err != nil {
+		if strings.Contains(err.Error(), "already exists") {
+			h.writeError(w, http.StatusConflict, "Tag already exists")
+			return
+		}
+		h.logger.Error("Failed to create tag", err, "user_id", user.ID, "tag_name", req.Name)
+		h.writeError(w, http.StatusInternalServerError, "Failed to create tag")
+		return
+	}
+
+	// Return the created tag name
+	h.writeJSON(w, http.StatusCreated, map[string]string{"name": req.Name})
+}
+
+// DeleteTag handles deleting a tag for the authenticated user
+func (h *DocumentHandler) DeleteTag(w http.ResponseWriter, r *http.Request) {
+	user, ok := GetUserFromContext(r)
+	if !ok {
+		h.writeError(w, http.StatusUnauthorized, "User not found in context")
+		return
+	}
+
+	token, ok := GetTokenFromContext(r)
+	if !ok {
+		h.writeError(w, http.StatusUnauthorized, "Token not found in context")
+		return
+	}
+
+	vars := mux.Vars(r)
+	tagName := vars["name"]
+	if tagName == "" {
+		h.writeError(w, http.StatusBadRequest, "Tag name is required")
+		return
+	}
+
+	err := h.documentService.DeleteTag(user.ID, tagName, token)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			h.writeError(w, http.StatusNotFound, "Tag not found")
+			return
+		}
+		h.logger.Error("Failed to delete tag", err, "user_id", user.ID, "tag_name", tagName)
+		h.writeError(w, http.StatusInternalServerError, "Failed to delete tag")
+		return
+	}
+
+	h.writeJSON(w, http.StatusOK, map[string]string{"message": "Tag deleted successfully"})
 }
 
 // writeError writes an error response

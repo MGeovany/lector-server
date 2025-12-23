@@ -14,7 +14,7 @@ import (
 type PreferenceHandler struct {
 	container         *config.Container
 	logger            domain.Logger
-	preferenceService domain.PreferenceService
+	preferenceService domain.UserPreferencesService
 }
 
 // NewPreferenceHandler creates a new preference handler
@@ -22,7 +22,7 @@ func NewPreferenceHandler(container *config.Container, logger domain.Logger) *Pr
 	return &PreferenceHandler{
 		container:         container,
 		logger:            logger,
-		preferenceService: container.PreferenceService,
+		preferenceService: container.UserPreferencesService,
 	}
 }
 
@@ -77,14 +77,11 @@ func (h *PreferenceHandler) UpdatePreferences(w http.ResponseWriter, r *http.Req
 		h.logger.Error("Failed to get current preferences", err, "user_id", user.ID)
 		// If no preferences exist, create defaults
 		currentPrefs = &domain.UserPreferences{
-			UserID:          user.ID,
-			FontSize:        16,
-			FontFamily:      "system-ui",
-			TextColor:       "#000000",
-			BackgroundColor: "#ffffff",
-			LineHeight:      1.5,
-			MaxWidth:        800,
-			Theme:           "light",
+			UserID:     user.ID,
+			FontSize:   16,
+			FontFamily: "system-ui",
+			Theme:      "light",
+			Tags:       []string{},
 		}
 	}
 
@@ -100,51 +97,34 @@ func (h *PreferenceHandler) UpdatePreferences(w http.ResponseWriter, r *http.Req
 			currentPrefs.FontSize = int(v)
 		}
 	}
-	
+
 	// Handle font_family
 	if fontFamily, ok := prefsUpdate["font_family"].(string); ok {
 		currentPrefs.FontFamily = fontFamily
 	}
-	
+
 	// Handle theme
 	if theme, ok := prefsUpdate["theme"].(string); ok {
 		currentPrefs.Theme = theme
 	}
-	
-	// Handle line_height (can be int or float64 from JSON)
-	if lineHeightVal, ok := prefsUpdate["line_height"]; ok {
-		switch v := lineHeightVal.(type) {
-		case float64:
-			currentPrefs.LineHeight = v
-		case int:
-			currentPrefs.LineHeight = float64(v)
-		case int64:
-			currentPrefs.LineHeight = float64(v)
-		}
-	}
-	
-	// Handle text_color
-	if textColor, ok := prefsUpdate["text_color"].(string); ok {
-		currentPrefs.TextColor = textColor
-	}
-	
-	// Handle background_color
-	if backgroundColor, ok := prefsUpdate["background_color"].(string); ok {
-		currentPrefs.BackgroundColor = backgroundColor
-	}
-	
-	// Handle max_width (can be int or float64 from JSON)
-	if maxWidthVal, ok := prefsUpdate["max_width"]; ok {
-		switch v := maxWidthVal.(type) {
-		case float64:
-			currentPrefs.MaxWidth = int(v)
-		case int:
-			currentPrefs.MaxWidth = v
-		case int64:
-			currentPrefs.MaxWidth = int(v)
+
+	// Handle tags (can be []interface{} or []string from JSON)
+	if tagsVal, ok := prefsUpdate["tags"]; ok {
+		switch v := tagsVal.(type) {
+		case []interface{}:
+			tags := make([]string, 0, len(v))
+			for _, item := range v {
+				if str, ok := item.(string); ok {
+					tags = append(tags, str)
+				}
+			}
+			currentPrefs.Tags = tags
+		case []string:
+			currentPrefs.Tags = v
 		}
 	}
 
+	// Persist updated preferences
 	if err := h.preferenceService.UpdatePreferences(user.ID, currentPrefs, token); err != nil {
 		h.logger.Error("Failed to update preferences", err, "user_id", user.ID)
 		h.writeError(w, http.StatusInternalServerError, err.Error())

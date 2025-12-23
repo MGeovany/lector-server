@@ -24,6 +24,7 @@ func main() {
 	// Handlers
 	documentHandler := handler.NewDocumentHandler(
 		container.DocumentService,
+		container.UserPreferencesService,
 		container.Logger,
 	)
 

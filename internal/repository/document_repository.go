@@ -5,26 +5,28 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"pdf-text-reader/internal/domain"
 )
 
-// SupabaseDocumentRepository implements the domain.DocumentRepository interface
-type SupabaseDocumentRepository struct {
+// DocumentRepository implements the domain.DocumentRepository interface
+type DocumentRepository struct {
 	supabaseClient domain.SupabaseClient
 	logger         domain.Logger
 }
 
 // NewSupabaseDocumentRepository creates a new Supabase document repository
-func NewSupabaseDocumentRepository(supabaseClient domain.SupabaseClient, logger domain.Logger) domain.DocumentRepository {
-	return &SupabaseDocumentRepository{
+
+func NewDocumentRepository(supabaseClient domain.SupabaseClient, logger domain.Logger) domain.DocumentRepository {
+	return &DocumentRepository{
 		supabaseClient: supabaseClient,
 		logger:         logger,
 	}
 }
 
 // Create a new document in Supabase
-func (r *SupabaseDocumentRepository) Create(
+func (r *DocumentRepository) Create(
 	document *domain.Document,
 	token string,
 ) error {
@@ -139,16 +141,21 @@ func (r *SupabaseDocumentRepository) Create(
 	// Final validation: serialize the entire data structure to JSON, clean it, and re-parse
 	// This ensures that the client won't introduce problematic Unicode sequences
 	tempData := map[string]interface{}{
-		"id":            document.ID,
-		"user_id":       document.UserID,
-		"original_name": document.OriginalName,
-		"title":         document.Title,
-		"content":       contentData,
-		"metadata":      metadataData,
-		"file_path":     document.FilePath,
-		"file_size":     document.FileSize,
-		"created_at":    document.CreatedAt,
-		"updated_at":    document.UpdatedAt,
+		"id":          document.ID,
+		"user_id":     document.UserID,
+		"title":       document.Title,
+		"content":     contentData,
+		"metadata":    metadataData,
+		"created_at":  document.CreatedAt,
+		"updated_at":  document.UpdatedAt,
+	}
+
+	// Add optional fields if they exist
+	if document.Author != nil {
+		tempData["author"] = *document.Author
+	}
+	if document.Description != nil {
+		tempData["description"] = *document.Description
 	}
 
 	// Serialize to JSON to check for problematic sequences
@@ -192,7 +199,7 @@ func (r *SupabaseDocumentRepository) Create(
 // removeProblematicUnicode removes problematic Unicode escape sequences from JSON strings
 // Specifically targets \u0000 and other sequences that cause PostgreSQL 22P05 errors
 // PostgreSQL is very strict about Unicode escape sequences in JSONB
-func (r *SupabaseDocumentRepository) removeProblematicUnicode(jsonStr string) string {
+func (r *DocumentRepository) removeProblematicUnicode(jsonStr string) string {
 	// First, remove all control character Unicode escapes (0000-001F)
 	// These are the most common cause of PostgreSQL 22P05 errors
 	reControlChars := regexp.MustCompile(`\\u00[0-1][0-9a-fA-F]`)
@@ -244,7 +251,7 @@ func (r *SupabaseDocumentRepository) removeProblematicUnicode(jsonStr string) st
 }
 
 // GetByID retrieves a document by ID
-func (r *SupabaseDocumentRepository) GetByID(id string, token string) (*domain.Document, error) {
+func (r *DocumentRepository) GetByID(id string, token string) (*domain.Document, error) {
 	client, err := r.supabaseClient.GetClientWithToken(token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client with token: %w", err)
@@ -270,11 +277,42 @@ func (r *SupabaseDocumentRepository) GetByID(id string, token string) (*domain.D
 		return nil, fmt.Errorf("document not found")
 	}
 
-	return r.mapToDocument(documents[0])
+	docData := documents[0]
+
+	// Fetch tag for this document - get tag_id first, then get tag name
+	docTagsData, _, err := client.From("document_tags").
+		Select("tag_id", "", false).
+		Eq("document_id", id).
+		Limit(1, "").
+		Execute()
+	if err == nil {
+		var docTagsList []map[string]interface{}
+		if err := json.Unmarshal(docTagsData, &docTagsList); err == nil && len(docTagsList) > 0 {
+			tagID := getString(docTagsList[0], "tag_id")
+			if tagID != "" {
+				// Get tag name from user_tags
+				tagData, _, err := client.From("user_tags").
+					Select("name", "", false).
+					Eq("id", tagID).
+					Execute()
+				if err == nil {
+					var tags []map[string]interface{}
+					if err := json.Unmarshal(tagData, &tags); err == nil && len(tags) > 0 {
+						tagName := getString(tags[0], "name")
+						if tagName != "" {
+							docData["tag"] = tagName
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return r.mapToDocument(docData)
 }
 
 // GetByUserID retrieves all documents for a user
-func (r *SupabaseDocumentRepository) GetByUserID(userID string, token string) ([]*domain.Document, error) {
+func (r *DocumentRepository) GetByUserID(userID string, token string) ([]*domain.Document, error) {
 	client, err := r.supabaseClient.GetClientWithToken(token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client with token: %w", err)
@@ -283,8 +321,10 @@ func (r *SupabaseDocumentRepository) GetByUserID(userID string, token string) ([
 		return nil, fmt.Errorf("supabase client not initialized")
 	}
 
+	// Select all fields except content to reduce payload size when listing documents
+	// Content is only needed when opening a specific document for reading
 	data, _, err := client.From("documents").
-		Select("*", "", false).
+		Select("id,user_id,title,author,description,metadata,created_at,updated_at", "", false).
 		Eq("user_id", userID).
 		Execute()
 	if err != nil {
@@ -296,8 +336,94 @@ func (r *SupabaseDocumentRepository) GetByUserID(userID string, token string) ([
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 
+	// Get all document IDs to fetch tags
+	documentIDs := make([]string, 0, len(documentsData))
+	for _, docData := range documentsData {
+		if docID, ok := docData["id"].(string); ok && docID != "" {
+			documentIDs = append(documentIDs, docID)
+		}
+	}
+
+	// Fetch tags for all documents (only first tag per document)
+	tagsMap := make(map[string]string)
+	if len(documentIDs) > 0 {
+		// First, get all document_tag relationships
+		docTagsData, _, err := client.From("document_tags").
+			Select("document_id,tag_id", "", false).
+			In("document_id", documentIDs).
+			Execute()
+		if err == nil {
+			var docTagsList []map[string]interface{}
+			if err := json.Unmarshal(docTagsData, &docTagsList); err == nil {
+				// Group by document_id to get only first tag per document
+				docTagMap := make(map[string]string) // document_id -> tag_id (only first)
+				for _, docTagData := range docTagsList {
+					docID := getString(docTagData, "document_id")
+					tagID := getString(docTagData, "tag_id")
+					if docID != "" && tagID != "" {
+						// Only store first tag for each document
+						if _, exists := docTagMap[docID]; !exists {
+							docTagMap[docID] = tagID
+						}
+					}
+				}
+
+				// Get all unique tag IDs
+				tagIDs := make([]string, 0, len(docTagMap))
+				tagIDSet := make(map[string]bool)
+				for _, tagID := range docTagMap {
+					if !tagIDSet[tagID] {
+						tagIDs = append(tagIDs, tagID)
+						tagIDSet[tagID] = true
+					}
+				}
+
+				// Get tag names from user_tags
+				if len(tagIDs) > 0 {
+					tagsData, _, err := client.From("user_tags").
+						Select("id,name", "", false).
+						In("id", tagIDs).
+						Execute()
+					if err == nil {
+						var tagsList []map[string]interface{}
+						if err := json.Unmarshal(tagsData, &tagsList); err == nil {
+							// Create map of tag_id -> tag_name
+							tagNameMap := make(map[string]string)
+							for _, tagData := range tagsList {
+								tagID := getString(tagData, "id")
+								tagName := getString(tagData, "name")
+								if tagID != "" && tagName != "" {
+									tagNameMap[tagID] = tagName
+								}
+							}
+
+							// Map document_id -> tag_name
+							for docID, tagID := range docTagMap {
+								if tagName, exists := tagNameMap[tagID]; exists {
+									tagsMap[docID] = tagName
+								}
+							}
+						}
+					}
+				}
+			}
+		} else {
+			r.logger.Warn("Failed to fetch tags for documents", "error", err)
+		}
+	}
+
 	var documents []*domain.Document
 	for _, docData := range documentsData {
+		// Set content to empty JSON array since we didn't fetch it
+		docData["content"] = json.RawMessage("[]")
+
+		// Add tag to document data (single tag only)
+		if docID, ok := docData["id"].(string); ok {
+			if tag, exists := tagsMap[docID]; exists {
+				docData["tag"] = tag
+			}
+		}
+
 		doc, err := r.mapToDocument(docData)
 		if err != nil {
 			r.logger.Error("Failed to map document", err, "doc_id", docData["id"])
@@ -310,7 +436,7 @@ func (r *SupabaseDocumentRepository) GetByUserID(userID string, token string) ([
 }
 
 // Update a document in Supabase
-func (r *SupabaseDocumentRepository) Update(document *domain.Document, token string) error {
+func (r *DocumentRepository) Update(document *domain.Document, token string) error {
 	client, err := r.supabaseClient.GetClientWithToken(token)
 	if err != nil {
 		return fmt.Errorf("failed to get client with token: %w", err)
@@ -352,6 +478,18 @@ func (r *SupabaseDocumentRepository) Update(document *domain.Document, token str
 		"updated_at": document.UpdatedAt,
 	}
 
+	// Add optional fields if they exist
+	if document.Author != nil {
+		data["author"] = *document.Author
+	} else {
+		data["author"] = nil
+	}
+	if document.Description != nil {
+		data["description"] = *document.Description
+	} else {
+		data["description"] = nil
+	}
+
 	_, _, err = client.From("documents").
 		Update(data, "", "").
 		Eq("id", document.ID).
@@ -360,11 +498,70 @@ func (r *SupabaseDocumentRepository) Update(document *domain.Document, token str
 		return fmt.Errorf("failed to update document: %w", err)
 	}
 
+	// Update tag relationship in document_tags table
+	// First, get user_id to find the tag
+	userID := document.UserID
+	if userID == "" {
+		// Try to get user_id from the document if not set
+		docData, _, err := client.From("documents").
+			Select("user_id", "", false).
+			Eq("id", document.ID).
+			Execute()
+		if err == nil {
+			var docs []map[string]interface{}
+			if err := json.Unmarshal(docData, &docs); err == nil && len(docs) > 0 {
+				userID = getString(docs[0], "user_id")
+			}
+		}
+	}
+
+	if userID != "" {
+		// Delete existing tag relationships for this document
+		_, _, err = client.From("document_tags").
+			Delete("", "").
+			Eq("document_id", document.ID).
+			Execute()
+		if err != nil {
+			r.logger.Warn("Failed to delete existing document tags", "error", err, "document_id", document.ID)
+		}
+
+		// If tag is provided, create new relationship
+		if document.Tag != nil && *document.Tag != "" {
+			// Find the tag_id from user_tags table
+			tagData, _, err := client.From("user_tags").
+				Select("id", "", false).
+				Eq("user_id", userID).
+				Eq("name", *document.Tag).
+				Execute()
+			if err == nil {
+				var tags []map[string]interface{}
+				if err := json.Unmarshal(tagData, &tags); err == nil && len(tags) > 0 {
+					tagID := getString(tags[0], "id")
+					if tagID != "" {
+						// Create new relationship
+						docTagData := map[string]interface{}{
+							"document_id": document.ID,
+							"tag_id":      tagID,
+						}
+						_, _, err = client.From("document_tags").
+							Insert(docTagData, false, "", "", "").
+							Execute()
+						if err != nil {
+							r.logger.Warn("Failed to create document tag relationship", "error", err, "document_id", document.ID, "tag", *document.Tag)
+						}
+					}
+				}
+			} else {
+				r.logger.Warn("Failed to find tag", "error", err, "tag_name", *document.Tag, "user_id", userID)
+			}
+		}
+	}
+
 	return nil
 }
 
 // Delete deletes a document from Supabase
-func (r *SupabaseDocumentRepository) Delete(id string, token string) error {
+func (r *DocumentRepository) Delete(id string, token string) error {
 	client, err := r.supabaseClient.GetClientWithToken(token)
 	if err != nil {
 		return fmt.Errorf("failed to get client with token: %w", err)
@@ -385,7 +582,7 @@ func (r *SupabaseDocumentRepository) Delete(id string, token string) error {
 }
 
 // Search searches documents by title or content
-func (r *SupabaseDocumentRepository) Search(userID, query string, token string) ([]*domain.Document, error) {
+func (r *DocumentRepository) Search(userID, query string, token string) ([]*domain.Document, error) {
 	client, err := r.supabaseClient.GetClientWithToken(token)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client with token: %w", err)
@@ -394,7 +591,7 @@ func (r *SupabaseDocumentRepository) Search(userID, query string, token string) 
 		return nil, fmt.Errorf("supabase client not initialized")
 	}
 
-	// Use Supabase's text search capabilities
+	// Get all user documents first (Supabase doesn't have full-text search by default)
 	data, _, err := client.From("documents").
 		Select("*", "", false).
 		Eq("user_id", userID).
@@ -408,6 +605,8 @@ func (r *SupabaseDocumentRepository) Search(userID, query string, token string) 
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 
+	// Filter documents by query (case-insensitive search in title and content)
+	queryLower := strings.ToLower(query)
 	var documents []*domain.Document
 	for _, docData := range documentsData {
 		doc, err := r.mapToDocument(docData)
@@ -415,27 +614,55 @@ func (r *SupabaseDocumentRepository) Search(userID, query string, token string) 
 			r.logger.Error("Failed to map document", err, "doc_id", docData["id"])
 			continue
 		}
-		documents = append(documents, doc)
+
+		// Search in title
+		titleMatch := strings.Contains(strings.ToLower(doc.Title), queryLower)
+
+		// Search in content (first 1000 chars for performance)
+		contentMatch := false
+		if len(doc.Content) > 0 {
+			contentStr := strings.ToLower(string(doc.Content))
+			if len(contentStr) > 1000 {
+				contentStr = contentStr[:1000]
+			}
+			contentMatch = strings.Contains(contentStr, queryLower)
+		}
+
+		// Search in author
+		authorMatch := strings.Contains(strings.ToLower(*doc.Author), queryLower)
+
+		if titleMatch || contentMatch || authorMatch {
+			documents = append(documents, doc)
+		}
 	}
 
 	return documents, nil
 }
 
 // mapToDocument converts a map to a Document struct
-func (r *SupabaseDocumentRepository) mapToDocument(data map[string]interface{}) (*domain.Document, error) {
+func (r *DocumentRepository) mapToDocument(data map[string]interface{}) (*domain.Document, error) {
 	document := &domain.Document{
-		ID:           getString(data, "id"),
-		UserID:       getString(data, "user_id"),
-		OriginalName: getString(data, "original_name"),
-		Title:        getString(data, "title"),
-		FilePath:     getString(data, "file_path"),
-		FileSize:     getInt64(data, "file_size"),
-	}
+		ID:          getString(data, "id"),
+		UserID:      getString(data, "user_id"),
+		Title:       getString(data, "title"),
+		Author:      getStringPointer(data, "author"),
+		Description: getStringPointer(data, "description"),
+	}	
 
 	// Parse timestamps
 	if createdAt := getString(data, "created_at"); createdAt != "" {
-		// Handle timestamp parsing - Supabase returns ISO format
-		// For now, store as string and convert when needed
+		if t, err := time.Parse(time.RFC3339, createdAt); err == nil {
+			document.CreatedAt = t
+		} else if t, err := time.Parse(time.RFC3339Nano, createdAt); err == nil {
+			document.CreatedAt = t
+		}
+	}
+	if updatedAt := getString(data, "updated_at"); updatedAt != "" {
+		if t, err := time.Parse(time.RFC3339, updatedAt); err == nil {
+			document.UpdatedAt = t
+		} else if t, err := time.Parse(time.RFC3339Nano, updatedAt); err == nil {
+			document.UpdatedAt = t
+		}
 	}
 
 	// Parse JSON fields - handle both string and object/array formats
@@ -476,6 +703,13 @@ func (r *SupabaseDocumentRepository) mapToDocument(data map[string]interface{}) 
 		}
 	}
 
+	// Parse tag (single tag only)
+	if tagVal, ok := data["tag"]; ok && tagVal != nil {
+		if tagStr, ok := tagVal.(string); ok && tagStr != "" {
+			document.Tag = &tagStr
+		}
+	}
+
 	return document, nil
 }
 
@@ -487,6 +721,18 @@ func getString(data map[string]interface{}, key string) string {
 		}
 	}
 	return ""
+}
+
+func getStringPointer(data map[string]interface{}, key string) *string {
+	if val, ok := data[key]; ok && val != nil {
+		if str, ok := val.(string); ok {
+			if str == "" {
+				return nil
+			}
+			return &str
+		}
+	}
+	return nil
 }
 
 func getInt64(data map[string]interface{}, key string) int64 {
@@ -501,4 +747,143 @@ func getInt64(data map[string]interface{}, key string) int64 {
 		}
 	}
 	return 0
+}
+
+// getStringArray is defined in user_preference_repository.go and shared across the package
+
+// GetTagsByUserID retrieves all tags for a user from the user_tags table
+func (r *DocumentRepository) GetTagsByUserID(userID string, token string) ([]string, error) {
+	client, err := r.supabaseClient.GetClientWithToken(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client with token: %w", err)
+	}
+	if client == nil {
+		return nil, fmt.Errorf("supabase client not initialized")
+	}
+
+	// Fetch tags from user_tags table
+	tagsData, _, err := client.From("user_tags").
+		Select("name", "", false).
+		Eq("user_id", userID).
+		Execute()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get tags: %w", err)
+	}
+
+	var tagsList []map[string]interface{}
+	if err := json.Unmarshal(tagsData, &tagsList); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal tags: %w", err)
+	}
+
+	tags := make([]string, 0, len(tagsList))
+	for _, tagData := range tagsList {
+		if tagName := getString(tagData, "name"); tagName != "" {
+			tags = append(tags, tagName)
+		}
+	}
+
+	return tags, nil
+}
+
+// CreateTag creates a new tag for a user in the user_tags table
+func (r *DocumentRepository) CreateTag(userID string, tagName string, token string) error {
+	client, err := r.supabaseClient.GetClientWithToken(token)
+	if err != nil {
+		return fmt.Errorf("failed to get client with token: %w", err)
+	}
+	if client == nil {
+		return fmt.Errorf("supabase client not initialized")
+	}
+
+	// Check if tag already exists for this user
+	existingTagsData, _, err := client.From("user_tags").
+		Select("id", "", false).
+		Eq("user_id", userID).
+		Eq("name", tagName).
+		Execute()
+	if err != nil {
+		return fmt.Errorf("failed to check existing tag: %w", err)
+	}
+
+	var existingTags []map[string]interface{}
+	if err := json.Unmarshal(existingTagsData, &existingTags); err != nil {
+		return fmt.Errorf("failed to unmarshal existing tags: %w", err)
+	}
+
+	if len(existingTags) > 0 {
+		return fmt.Errorf("tag already exists")
+	}
+
+	// Create new tag
+	tagData := map[string]interface{}{
+		"user_id": userID,
+		"name":    tagName,
+	}
+
+	_, _, err = client.From("user_tags").
+		Insert(tagData, false, "", "", "").
+		Execute()
+	if err != nil {
+		return fmt.Errorf("failed to create tag: %w", err)
+	}
+
+	r.logger.Info("Tag created successfully", "user_id", userID, "tag_name", tagName)
+	return nil
+}
+
+// DeleteTag deletes a tag for a user from the user_tags table
+func (r *DocumentRepository) DeleteTag(userID string, tagName string, token string) error {
+	client, err := r.supabaseClient.GetClientWithToken(token)
+	if err != nil {
+		return fmt.Errorf("failed to get client with token: %w", err)
+	}
+	if client == nil {
+		return fmt.Errorf("supabase client not initialized")
+	}
+
+	// First, find the tag ID
+	tagData, _, err := client.From("user_tags").
+		Select("id", "", false).
+		Eq("user_id", userID).
+		Eq("name", tagName).
+		Execute()
+	if err != nil {
+		return fmt.Errorf("failed to find tag: %w", err)
+	}
+
+	var tags []map[string]interface{}
+	if err := json.Unmarshal(tagData, &tags); err != nil {
+		return fmt.Errorf("failed to unmarshal tag data: %w", err)
+	}
+
+	if len(tags) == 0 {
+		return fmt.Errorf("tag not found")
+	}
+
+	tagID := getString(tags[0], "id")
+	if tagID == "" {
+		return fmt.Errorf("tag ID not found")
+	}
+
+	// Delete all document_tag relationships first (CASCADE should handle this, but being explicit)
+	_, _, err = client.From("document_tags").
+		Delete("", "").
+		Eq("tag_id", tagID).
+		Execute()
+	if err != nil {
+		r.logger.Warn("Failed to delete document_tag relationships", "error", err, "tag_id", tagID)
+		// Continue anyway, CASCADE should handle it
+	}
+
+	// Delete the tag
+	_, _, err = client.From("user_tags").
+		Delete("", "").
+		Eq("id", tagID).
+		Execute()
+	if err != nil {
+		return fmt.Errorf("failed to delete tag: %w", err)
+	}
+
+	r.logger.Info("Tag deleted successfully", "user_id", userID, "tag_name", tagName)
+	return nil
 }

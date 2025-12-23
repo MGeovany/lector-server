@@ -37,16 +37,42 @@ func NewRouter(
 	protected.HandleFunc("/auth/validate", authHandler.ValidateToken).Methods(http.MethodGet)
 
 	// Documents
+	// Gets all the card information
+	protected.HandleFunc("/documents/library", documentHandler.GetLibrary).Methods(http.MethodGet)
+
+	// Get all the doc information
 	protected.HandleFunc("/documents", documentHandler.UploadDocument).Methods(http.MethodPost)
+
+	// Get doc data by ID
 	protected.HandleFunc("/documents/{id}", documentHandler.GetDocument).Methods(http.MethodGet)
+
+	// Update doc by ID
+	protected.HandleFunc("/documents/{id}", documentHandler.UpdateDocument).Methods(http.MethodPut)
+
+	// Delete doc by ID
 	protected.HandleFunc("/documents/{id}", documentHandler.DeleteDocument).Methods(http.MethodDelete)
+
+	// Search docs
 	protected.HandleFunc("/documents/search", documentHandler.SearchDocuments).Methods(http.MethodGet)
+
+	// Get all the docs by user ID
 	protected.HandleFunc("/documents/user/{id}", documentHandler.GetDocumentsByUserID).Methods(http.MethodGet)
+
+	// Get all document tags for the authenticated user
+	protected.HandleFunc("/document-tags", documentHandler.GetDocumentTags).Methods(http.MethodGet)
+
+	// Create a new document tag for the authenticated user
+	protected.HandleFunc("/document-tags", documentHandler.CreateTag).Methods(http.MethodPost)
+
+	// Delete a document tag for the authenticated user
+	protected.HandleFunc("/document-tags/{name}", documentHandler.DeleteTag).Methods(http.MethodDelete)
 
 	// Preferences
 	protected.HandleFunc("/preferences", preferenceHandler.GetPreferences).Methods(http.MethodGet)
 	protected.HandleFunc("/preferences", preferenceHandler.UpdatePreferences).Methods(http.MethodPut)
+
 	protected.HandleFunc("/preferences/reading-position/{documentId}", preferenceHandler.GetReadingPosition).Methods(http.MethodGet)
+
 	protected.HandleFunc("/preferences/reading-position/{documentId}", preferenceHandler.UpdateReadingPosition).Methods(http.MethodPut)
 
 	// CORS

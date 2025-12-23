@@ -26,11 +26,11 @@ func NewPDFProcessor(logger domain.Logger) *PDFProcessor {
 
 // TextBlock represents a block of text from a PDF
 type TextBlock struct {
-	Type     string `json:"type"`     // "paragraph" or "heading"
-	Content  string `json:"content"`  // The text content
-	Level    int    `json:"level"`    // Heading level (0 for paragraphs)
-	PageNum  int    `json:"page_num"` // Page number (1-indexed)
-	Position int    `json:"position"` // Position within the page
+	Type       string `json:"type"`        // "paragraph" or "heading"
+	Content    string `json:"content"`     // The text content
+	Level      int    `json:"level"`       // Heading level (0 for paragraphs)
+	PageNumber int    `json:"page_number"` // Page number (1-indexed)
+	Position   int    `json:"position"`    // Position within the page
 }
 
 // PDFMetadata contains extracted PDF metadata
@@ -66,7 +66,6 @@ func (p *PDFProcessor) ProcessPDF(pdfBytes []byte) ([]TextBlock, PDFMetadata, er
 	}
 
 	var blocks []TextBlock
-	positionCounter := 0
 
 	// Process each page
 	for pageNum := 0; pageNum < doc.NumPage(); pageNum++ {
@@ -77,8 +76,23 @@ func (p *PDFProcessor) ProcessPDF(pdfBytes []byte) ([]TextBlock, PDFMetadata, er
 			continue
 		}
 
+		// If page has no text, still create an empty block to preserve page structure
+		text = strings.TrimSpace(text)
+		if text == "" {
+			// Create an empty block for empty pages to maintain page count
+			blocks = append(blocks, TextBlock{
+				Type:       "paragraph",
+				Content:    "",
+				Level:      0,
+				PageNumber: pageNum + 1, // 1-indexed for frontend
+				Position:   0,
+			})
+			continue
+		}
+
 		// Split text into paragraphs and process
 		paragraphs := p.splitIntoParagraphs(text)
+		positionCounter := 0 // Reset position counter for each page
 
 		for _, para := range paragraphs {
 			para = strings.TrimSpace(para)
@@ -99,11 +113,11 @@ func (p *PDFProcessor) ProcessPDF(pdfBytes []byte) ([]TextBlock, PDFMetadata, er
 			sanitizedContent := p.sanitizeText(para)
 
 			blocks = append(blocks, TextBlock{
-				Type:     blockType,
-				Content:  sanitizedContent,
-				Level:    level,
-				PageNum:  pageNum + 1, // 1-indexed for frontend
-				Position: positionCounter,
+				Type:       blockType,
+				Content:    sanitizedContent,
+				Level:      level,
+				PageNumber: pageNum + 1, // 1-indexed for frontend
+				Position:   positionCounter,
 			})
 			positionCounter++
 		}

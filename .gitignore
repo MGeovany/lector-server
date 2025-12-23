@@ -38,3 +38,6 @@ uploads/
 *.pdf
 
 .kiro/
+
+# Supabase
+db/

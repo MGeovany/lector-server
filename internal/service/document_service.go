@@ -5,11 +5,13 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"pdf-text-reader/internal/domain"
 
 	"encoding/json"
+
 	"github.com/google/uuid"
 )
 
@@ -33,7 +35,7 @@ func NewDocumentService(
 	}
 }
 
-func (s *DocumentService) GetDocumentsByUserID(userID string, token string) ([]*domain.Document, error) {
+func (s *DocumentService) GetDocumentsByUserID(userID string, token string) ([]*domain.DocumentData, error) {
 	documents, err := s.repo.GetByUserID(userID, token)
 	if err != nil {
 		return nil, err
@@ -41,7 +43,7 @@ func (s *DocumentService) GetDocumentsByUserID(userID string, token string) ([]*
 	return documents, nil
 }
 
-func (s *DocumentService) GetDocument(documentID string, token string) (*domain.Document, error) {
+func (s *DocumentService) GetDocument(documentID string, token string) (*domain.DocumentData, error) {
 	document, err := s.repo.GetByID(documentID, token)
 	if err != nil {
 		return nil, err
@@ -57,13 +59,108 @@ func (s *DocumentService) DeleteDocument(documentID string, token string) error 
 	return nil
 }
 
+func (s *DocumentService) SearchDocuments(userID, query string, token string) ([]*domain.DocumentData, error) {
+	documents, err := s.repo.Search(userID, query, token)
+	if err != nil {
+		return nil, err
+	}
+	return documents, nil
+}
+
+func (s *DocumentService) GetDocumentTags(userID string, token string) ([]string, error) {
+	tags, err := s.repo.GetTagsByUserID(userID, token)
+	if err != nil {
+		return nil, err
+	}
+	return tags, nil
+}
+
+func (s *DocumentService) CreateTag(userID string, tagName string, token string) error {
+	// Validate tag name
+	if tagName == "" {
+		return fmt.Errorf("tag name cannot be empty")
+	}
+
+	// Trim whitespace
+	tagName = strings.TrimSpace(tagName)
+	if tagName == "" {
+		return fmt.Errorf("tag name cannot be empty")
+	}
+
+	err := s.repo.CreateTag(userID, tagName, token)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *DocumentService) DeleteTag(userID string, tagName string, token string) error {
+	// Validate tag name
+	if tagName == "" {
+		return fmt.Errorf("tag name cannot be empty")
+	}
+
+	// Trim whitespace
+	tagName = strings.TrimSpace(tagName)
+	if tagName == "" {
+		return fmt.Errorf("tag name cannot be empty")
+	}
+
+	err := s.repo.DeleteTag(userID, tagName, token)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *DocumentService) UpdateDocumentDetails(
+	userID string,
+	documentID string,
+	title *string,
+	author *string,
+	tag *string,
+	token string,
+) (*domain.DocumentData, error) {
+	doc, err := s.repo.GetByID(documentID, token)
+	if err != nil {
+		return nil, err
+	}
+	if doc.UserID != userID {
+		return nil, fmt.Errorf("access denied")
+	}
+
+	if title != nil {
+		doc.Title = *title
+	}
+	if author != nil {
+		doc.Author = author
+	}
+	if tag != nil {
+		doc.Tag = tag
+	}
+
+	doc.UpdatedAt = time.Now().UTC()
+	if err := s.repo.Update(doc, token); err != nil {
+		return nil, err
+	}
+
+	updated, err := s.repo.GetByID(documentID, token)
+	if err != nil {
+		// If re-fetch fails, at least return our updated in-memory doc.
+		return doc, nil
+	}
+	return updated, nil
+}
+
 func (s *DocumentService) Upload(
 	ctx context.Context,
 	userID string,
 	file io.Reader,
 	token string,
 	originalName string,
-) (*domain.Document, error) {
+) (*domain.DocumentData, error) {
 
 	const maxUserStorage = 15 * 1024 * 1024 // 15MB
 
@@ -95,7 +192,7 @@ func (s *DocumentService) Upload(
 
 	var currentUsage int64
 	for _, d := range existingDocs {
-		currentUsage += d.FileSize
+		currentUsage += d.Metadata.FileSize
 	}
 
 	if currentUsage+totalSize > maxUserStorage {
@@ -143,12 +240,15 @@ func (s *DocumentService) Upload(
 			}
 
 			metadata = domain.DocumentMetadata{
-				Author:      pdfMetadata.Author,
-				PageCount:   pdfMetadata.PageCount,
-				HasPassword: pdfMetadata.HasPassword,
+				OriginalTitle:  originalName,
+				OriginalAuthor: pdfMetadata.Author,
+				PageCount:      pdfMetadata.PageCount,
+				HasPassword:    pdfMetadata.HasPassword,
+				FileSize:       totalSize,
+				Format:         "pdf",
 			}
 
-			s.logger.Info("Document processed synchronously",
+			s.logger.Info("DocumentData processed synchronously",
 				"doc_id", docID,
 				"blocks_count", len(blocks),
 				"page_count", pdfMetadata.PageCount,
@@ -180,15 +280,18 @@ func (s *DocumentService) Upload(
 			}
 
 			// Update document with processed content
-			updatedDoc := &domain.Document{
+			updatedDoc := &domain.DocumentData{
 				ID:      docID,
 				UserID:  userID,
 				Title:   docTitle,
 				Content: contentJSON,
 				Metadata: domain.DocumentMetadata{
-					Author:      pdfMetadata.Author,
-					PageCount:   pdfMetadata.PageCount,
-					HasPassword: pdfMetadata.HasPassword,
+					OriginalTitle:  originalName,
+					OriginalAuthor: pdfMetadata.Author,
+					PageCount:      pdfMetadata.PageCount,
+					HasPassword:    pdfMetadata.HasPassword,
+					FileSize:       totalSize,
+					Format:         "pdf",
 				},
 				UpdatedAt: time.Now().UTC(),
 			}
@@ -198,27 +301,42 @@ func (s *DocumentService) Upload(
 				return
 			}
 
-			s.logger.Info("Document processed in background",
+			s.logger.Info("DocumentData processed in background",
 				"doc_id", docID,
 				"blocks_count", len(blocks),
 				"page_count", pdfMetadata.PageCount,
 			)
 		}()
 
-		s.logger.Info("Document created, processing in background", "doc_id", docID, "file_size", totalSize)
+		s.logger.Info("DocumentData created, processing in background", "doc_id", docID, "file_size", totalSize)
 	}
 
-	doc := &domain.Document{
-		ID:           docID,
-		UserID:       userID,
-		OriginalName: originalName,
-		Title:        title,
-		Content:      contentJSON,
-		Metadata:     metadata,
-		FilePath:     path,
-		FileSize:     totalSize,
-		CreatedAt:    now,
-		UpdatedAt:    now,
+	// Set author from PDF metadata if available, otherwise leave nil
+	var author *string
+	if metadata.OriginalAuthor != "" {
+		author = &metadata.OriginalAuthor
+	}
+
+	// Ensure metadata includes file information
+	if metadata.FileSize == 0 {
+		metadata.FileSize = totalSize
+	}
+	if metadata.OriginalTitle == "" {
+		metadata.OriginalTitle = originalName
+	}
+	if metadata.Format == "" {
+		metadata.Format = "pdf"
+	}
+
+	doc := &domain.DocumentData{
+		ID:          docID,
+		UserID:      userID,
+		Title:       title,
+		Author:      author,
+		Content:     contentJSON,
+		Metadata:    metadata,
+		CreatedAt:   now,
+		UpdatedAt:   now,
 	}
 
 	if err := s.repo.Create(doc, token); err != nil {
