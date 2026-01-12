@@ -49,6 +49,9 @@ func NewRouter(
 	// Update doc by ID
 	protected.HandleFunc("/documents/{id}", documentHandler.UpdateDocument).Methods(http.MethodPut)
 
+	// Favorite/unfavorite doc
+	protected.HandleFunc("/documents/{id}/favorite", documentHandler.SetFavorite).Methods(http.MethodPut)
+
 	// Delete doc by ID
 	protected.HandleFunc("/documents/{id}", documentHandler.DeleteDocument).Methods(http.MethodDelete)
 

@@ -43,6 +43,8 @@ type Document struct {
 	Metadata DocumentMetadata `json:"metadata"`
 	Tag      *string          `json:"tag,omitempty"` // Single tag (document can only have one tag)
 
+	IsFavorite bool `json:"is_favorite"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -73,6 +75,9 @@ type DocumentRepository interface {
 	GetTagsByUserID(userID string, token string) ([]string, error)
 	CreateTag(userID string, tagName string, token string) error
 	DeleteTag(userID string, tagName string, token string) error
+
+	// Favorites
+	SetFavorite(userID string, documentID string, isFavorite bool, token string) error
 }
 
 // DocumentService defines the use-case operations for documents.
@@ -81,6 +86,7 @@ type DocumentService interface {
 	GetDocument(documentID string, token string) (*DocumentData, error)
 	DeleteDocument(documentID string, token string) error
 	SearchDocuments(userID, query string, token string) ([]*DocumentData, error)
+	SetFavorite(userID string, documentID string, isFavorite bool, token string) error
 	UpdateDocumentDetails(
 		userID string,
 		documentID string,

@@ -67,6 +67,18 @@ func (s *DocumentService) SearchDocuments(userID, query string, token string) ([
 	return documents, nil
 }
 
+func (s *DocumentService) SetFavorite(userID string, documentID string, isFavorite bool, token string) error {
+	// Verify ownership to prevent cross-user writes.
+	doc, err := s.repo.GetByID(documentID, token)
+	if err != nil {
+		return err
+	}
+	if doc.UserID != userID {
+		return fmt.Errorf("access denied")
+	}
+	return s.repo.SetFavorite(userID, documentID, isFavorite, token)
+}
+
 func (s *DocumentService) GetDocumentTags(userID string, token string) ([]string, error) {
 	tags, err := s.repo.GetTagsByUserID(userID, token)
 	if err != nil {

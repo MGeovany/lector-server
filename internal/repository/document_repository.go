@@ -279,6 +279,15 @@ func (r *DocumentRepository) GetByID(id string, token string) (*domain.Document,
 
 	docData := documents[0]
 
+	// Best-effort: populate favorite flag.
+	// We only have document_id here; we can read user_id from the document row and check favorites.
+	if userID := getString(docData, "user_id"); userID != "" {
+		isFav, favErr := r.isFavorite(userID, id, token)
+		if favErr == nil {
+			docData["is_favorite"] = isFav
+		}
+	}
+
 	// Fetch tag for this document - get tag_id first, then get tag name
 	docTagsData, _, err := client.From("document_tags").
 		Select("tag_id", "", false).
@@ -334,6 +343,12 @@ func (r *DocumentRepository) GetByUserID(userID string, token string) ([]*domain
 	var documentsData []map[string]interface{}
 	if err := json.Unmarshal(data, &documentsData); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	// Fetch favorites for user once and mark docs.
+	favIDs, favErr := r.favoriteIDsByUser(userID, token)
+	if favErr != nil {
+		r.logger.Warn("Failed to fetch favorites for user", "error", favErr, "user_id", userID)
 	}
 
 	// Get all document IDs to fetch tags
@@ -417,6 +432,15 @@ func (r *DocumentRepository) GetByUserID(userID string, token string) ([]*domain
 		// Set content to empty JSON array since we didn't fetch it
 		docData["content"] = json.RawMessage("[]")
 
+		// Add favorite flag.
+		if favErr == nil {
+			if docID, ok := docData["id"].(string); ok && docID != "" {
+				if favIDs[docID] {
+					docData["is_favorite"] = true
+				}
+			}
+		}
+
 		// Add tag to document data (single tag only)
 		if docID, ok := docData["id"].(string); ok {
 			if tag, exists := tagsMap[docID]; exists {
@@ -433,6 +457,47 @@ func (r *DocumentRepository) GetByUserID(userID string, token string) ([]*domain
 	}
 
 	return documents, nil
+}
+
+// SetFavorite inserts/deletes the favorite relationship for a (user, document).
+func (r *DocumentRepository) SetFavorite(userID string, documentID string, isFavorite bool, token string) error {
+	client, err := r.supabaseClient.GetClientWithToken(token)
+	if err != nil {
+		return fmt.Errorf("failed to get client with token: %w", err)
+	}
+	if client == nil {
+		return fmt.Errorf("supabase client not initialized")
+	}
+
+	if isFavorite {
+		row := map[string]interface{}{
+			"user_id":     userID,
+			"document_id": documentID,
+		}
+		// Insert is idempotent due to PK (user_id, document_id). If it already exists, Supabase may return 409.
+		// We treat 409 as success; supabase-go doesn't expose status cleanly here, so we just attempt insert and
+		// ignore "duplicate key" style errors.
+		_, _, err = client.From("document_favorites").Insert(row, false, "", "", "").Execute()
+		if err != nil {
+			// Best-effort duplicate detection.
+			if strings.Contains(strings.ToLower(err.Error()), "duplicate") ||
+				strings.Contains(strings.ToLower(err.Error()), "already exists") {
+				return nil
+			}
+			return fmt.Errorf("failed to set favorite: %w", err)
+		}
+		return nil
+	}
+
+	_, _, err = client.From("document_favorites").
+		Delete("", "").
+		Eq("user_id", userID).
+		Eq("document_id", documentID).
+		Execute()
+	if err != nil {
+		return fmt.Errorf("failed to unset favorite: %w", err)
+	}
+	return nil
 }
 
 // Update a document in Supabase
@@ -649,6 +714,20 @@ func (r *DocumentRepository) mapToDocument(data map[string]interface{}) (*domain
 		Description: getStringPointer(data, "description"),
 	}
 
+	// Favorites (optional field in list endpoints)
+	if val, ok := data["is_favorite"]; ok && val != nil {
+		switch v := val.(type) {
+		case bool:
+			document.IsFavorite = v
+		case string:
+			document.IsFavorite = strings.EqualFold(v, "true")
+		case float64:
+			document.IsFavorite = v != 0
+		default:
+			document.IsFavorite = false
+		}
+	}
+
 	// Parse timestamps
 	if createdAt := getString(data, "created_at"); createdAt != "" {
 		if t, err := time.Parse(time.RFC3339, createdAt); err == nil {
@@ -711,6 +790,46 @@ func (r *DocumentRepository) mapToDocument(data map[string]interface{}) (*domain
 	}
 
 	return document, nil
+}
+
+// favoriteIDsByUser returns a set of document_id that are favorited by user.
+func (r *DocumentRepository) favoriteIDsByUser(userID string, token string) (map[string]bool, error) {
+	client, err := r.supabaseClient.GetClientWithToken(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client with token: %w", err)
+	}
+	if client == nil {
+		return nil, fmt.Errorf("supabase client not initialized")
+	}
+
+	data, _, err := client.From("document_favorites").
+		Select("document_id", "", false).
+		Eq("user_id", userID).
+		Execute()
+	if err != nil {
+		return nil, err
+	}
+
+	var rows []map[string]interface{}
+	if err := json.Unmarshal(data, &rows); err != nil {
+		return nil, err
+	}
+
+	set := make(map[string]bool, len(rows))
+	for _, row := range rows {
+		if id := getString(row, "document_id"); id != "" {
+			set[id] = true
+		}
+	}
+	return set, nil
+}
+
+func (r *DocumentRepository) isFavorite(userID string, documentID string, token string) (bool, error) {
+	set, err := r.favoriteIDsByUser(userID, token)
+	if err != nil {
+		return false, err
+	}
+	return set[documentID], nil
 }
 
 // Helper functions for type conversion

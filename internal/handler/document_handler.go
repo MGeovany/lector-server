@@ -231,6 +231,49 @@ type updateDocumentRequest struct {
 	Tag    *string `json:"tag"` // Single tag (document can only have one tag)
 }
 
+type setFavoriteRequest struct {
+	IsFavorite bool `json:"is_favorite"`
+}
+
+// SetFavorite marks/unmarks a document as favorite for the authenticated user.
+func (h *DocumentHandler) SetFavorite(w http.ResponseWriter, r *http.Request) {
+	user, ok := GetUserFromContext(r)
+	if !ok {
+		h.writeError(w, http.StatusUnauthorized, "User not found in context")
+		return
+	}
+
+	vars := mux.Vars(r)
+	documentID := vars["id"]
+	if documentID == "" {
+		h.writeError(w, http.StatusBadRequest, "Document ID is required")
+		return
+	}
+
+	token, ok := GetTokenFromContext(r)
+	if !ok {
+		h.writeError(w, http.StatusUnauthorized, "Token not found in context")
+		return
+	}
+
+	var req setFavoriteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if err := h.documentService.SetFavorite(user.ID, documentID, req.IsFavorite, token); err != nil {
+		h.writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	h.writeJSON(w, http.StatusOK, map[string]any{
+		"document_id":  documentID,
+		"is_favorite":  req.IsFavorite,
+		"updated":      true,
+	})
+}
+
 // UpdateDocument updates title/author/tag for a document
 func (h *DocumentHandler) UpdateDocument(w http.ResponseWriter, r *http.Request) {
 	user, ok := GetUserFromContext(r)
