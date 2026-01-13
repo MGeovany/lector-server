@@ -21,7 +21,9 @@ type AppConfig struct {
 // NewConfig creates a new configuration instance with default values
 func NewConfig() domain.Config {
 	return &AppConfig{
-		ServerPort:  getEnvOrDefault("SERVER_PORT", "8080"),
+		// Cloud Run (and many PaaS) provide the listening port via PORT.
+		// Keep SERVER_PORT for local/dev compatibility.
+		ServerPort:  getEnvOrDefault("PORT", getEnvOrDefault("SERVER_PORT", "8080")),
 		UploadPath:  getEnvOrDefault("UPLOAD_PATH", "./uploads"),
 		MaxFileSize: getEnvInt64OrDefault("MAX_FILE_SIZE", 50*1024*1024), // 50MB default
 		LogLevel:    getEnvOrDefault("LOG_LEVEL", "info"),

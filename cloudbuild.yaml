@@ -1,0 +1,34 @@
+# Cloud Build pipeline to build a Docker image and (optionally) deploy to Cloud Run.
+# Usage:
+#   gcloud builds submit --config cloudbuild.yaml \
+#     --substitutions _REGION=us-central1,_REPO=services,_SERVICE=reader-go
+#
+# Prereqs:
+# - Artifact Registry repo exists: ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}
+# - Cloud Run API enabled
+
+substitutions:
+  _REGION: us-central1
+  _REPO: services
+  _SERVICE: reader-go
+  _IMAGE: '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA'
+
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', '${_IMAGE}', '.']
+
+  # Uncomment to deploy automatically after build:
+  # - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+  #   entrypoint: gcloud
+  #   args:
+  #     [
+  #       'run','deploy','${_SERVICE}',
+  #       '--image','${_IMAGE}',
+  #       '--region','${_REGION}',
+  #       '--platform','managed',
+  #       '--allow-unauthenticated'
+  #     ]
+
+images:
+  - '${_IMAGE}'
+

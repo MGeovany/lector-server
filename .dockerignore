@@ -1,0 +1,31 @@
+.git
+.github
+
+# Default-deny is not enabled; we ignore a few heavy/local dirs only.
+bin/
+data/
+uploads/
+
+*.db
+*.log
+
+.env
+.env.*
+
+# Ignore only top-level binaries (do NOT ignore cmd/server/)
+/server
+/main
+
+tmp/
+build-errors.log
+
+# Force-include source directories (defensive: protects against broad patterns)
+!cmd/
+!cmd/**
+!internal/
+!internal/**
+!pkg/
+!pkg/**
+!go.mod
+!go.sum
+!Dockerfile
