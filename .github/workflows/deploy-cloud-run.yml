@@ -22,9 +22,9 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    # Optional but recommended: use a GitHub "Environment" named "production"
+    # Optional but recommended: use a GitHub "Environment" named "prd"
     # so you can scope secrets/vars and add approvals.
-    environment: production
+    environment: prd
     steps:
       - name: Checkout
         uses: actions/checkout@v4
