@@ -78,6 +78,9 @@ func NewRouter(
 
 	protected.HandleFunc("/preferences/reading-position/{documentId}", preferenceHandler.UpdateReadingPosition).Methods(http.MethodPut)
 
+	// Get all reading positions for the authenticated user
+	protected.HandleFunc("/preferences/reading-positions", preferenceHandler.GetAllReadingPositions).Methods(http.MethodGet)
+
 	// CORS
 	c := cors.New(cors.Options{
 		AllowedOrigins: []string{

@@ -1,3 +1,4 @@
+// Package handler provides HTTP handlers for the API.
 package handler
 
 import (
@@ -44,10 +45,66 @@ func (h *DocumentHandler) GetDocumentsByUserID(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	documents, err := h.documentService.GetDocumentsByUserID(userID, token)
-	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err.Error())
+	// Fetch documents and reading positions in parallel.
+	documentsChan := make(chan []*domain.DocumentData, 1)
+	positionsChan := make(chan map[string]*domain.ReadingPosition, 1)
+	errChan := make(chan error, 2)
+
+	go func() {
+		docs, err := h.documentService.GetDocumentsByUserID(userID, token)
+		if err != nil {
+			errChan <- err
+			return
+		}
+		documentsChan <- docs
+	}()
+
+	go func() {
+		positions, err := h.preferenceService.GetAllReadingPositions(userID, token)
+		if err != nil {
+			// Non-blocking: return empty map if positions fail.
+			positionsChan <- make(map[string]*domain.ReadingPosition)
+			return
+		}
+		positionsChan <- positions
+	}()
+
+	var documents []*domain.DocumentData
+	var positions map[string]*domain.ReadingPosition
+	received := 0
+	var firstErr error
+
+	for received < 2 {
+		select {
+		case err := <-errChan:
+			if err != nil {
+				firstErr = err
+			}
+			received++
+		case docs := <-documentsChan:
+			documents = docs
+			received++
+		case pos := <-positionsChan:
+			positions = pos
+			received++
+		}
+	}
+
+	if firstErr != nil {
+		h.writeError(w, http.StatusInternalServerError, firstErr.Error())
 		return
+	}
+
+	// Attach reading_position onto each document (inline) to avoid extra fetches on clients.
+	if positions != nil && documents != nil {
+		for _, doc := range documents {
+			if doc == nil {
+				continue
+			}
+			if pos, ok := positions[doc.ID]; ok {
+				doc.ReadingPosition = pos
+			}
+		}
 	}
 
 	h.writeJSON(w, http.StatusOK, documents)
@@ -96,14 +153,13 @@ func (h *DocumentHandler) GetLibrary(w http.ResponseWriter, r *http.Request) {
 	var documents []*domain.Document
 	var positions map[string]*domain.ReadingPosition
 	received := 0
+	var firstErr error
 
 	for received < 2 {
 		select {
 		case err := <-errChan:
 			if err != nil {
-				h.logger.Error("Failed to load library data", err, "user_id", user.ID)
-				h.writeError(w, http.StatusInternalServerError, "Failed to load library data")
-				return
+				firstErr = err
 			}
 			received++
 		case docs := <-documentsChan:
@@ -113,6 +169,12 @@ func (h *DocumentHandler) GetLibrary(w http.ResponseWriter, r *http.Request) {
 			positions = pos
 			received++
 		}
+	}
+
+	if firstErr != nil {
+		h.logger.Error("Failed to load library data", firstErr, "user_id", user.ID)
+		h.writeError(w, http.StatusInternalServerError, "Failed to load library data")
+		return
 	}
 
 	// Combine documents with positions
