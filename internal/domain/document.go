@@ -45,6 +45,9 @@ type Document struct {
 
 	IsFavorite bool `json:"is_favorite"`
 
+	// Optional reading position (when requested by endpoints like documents/user/{id}).
+	ReadingPosition *ReadingPosition `json:"reading_position,omitempty"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }

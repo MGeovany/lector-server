@@ -219,6 +219,30 @@ func (h *PreferenceHandler) UpdateReadingPosition(w http.ResponseWriter, r *http
 	h.writeJSON(w, http.StatusOK, updatedPosition)
 }
 
+// GetAllReadingPositions returns all reading positions for the authenticated user.
+func (h *PreferenceHandler) GetAllReadingPositions(w http.ResponseWriter, r *http.Request) {
+	user, ok := GetUserFromContext(r)
+	if !ok {
+		h.writeError(w, http.StatusUnauthorized, "User not found in context")
+		return
+	}
+
+	token, ok := GetTokenFromContext(r)
+	if !ok {
+		h.writeError(w, http.StatusUnauthorized, "Token not found in context")
+		return
+	}
+
+	positions, err := h.preferenceService.GetAllReadingPositions(user.ID, token)
+	if err != nil {
+		h.logger.Error("Failed to get reading positions", err, "user_id", user.ID)
+		h.writeError(w, http.StatusInternalServerError, "Failed to retrieve reading positions")
+		return
+	}
+
+	h.writeJSON(w, http.StatusOK, positions)
+}
+
 // writeError writes an error response
 func (h *PreferenceHandler) writeError(w http.ResponseWriter, statusCode int, message string) {
 	w.Header().Set("Content-Type", "application/json")
