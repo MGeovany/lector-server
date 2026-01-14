@@ -72,13 +72,13 @@ func (h *DocumentHandler) GetDocumentsByUserID(w http.ResponseWriter, r *http.Re
 	var documents []*domain.DocumentData
 	var positions map[string]*domain.ReadingPosition
 	received := 0
+	var firstErr error
 
 	for received < 2 {
 		select {
 		case err := <-errChan:
 			if err != nil {
-				h.writeError(w, http.StatusInternalServerError, err.Error())
-				return
+				firstErr = err
 			}
 			received++
 		case docs := <-documentsChan:
@@ -88,6 +88,11 @@ func (h *DocumentHandler) GetDocumentsByUserID(w http.ResponseWriter, r *http.Re
 			positions = pos
 			received++
 		}
+	}
+
+	if firstErr != nil {
+		h.writeError(w, http.StatusInternalServerError, firstErr.Error())
+		return
 	}
 
 	// Attach reading_position onto each document (inline) to avoid extra fetches on clients.
@@ -148,14 +153,13 @@ func (h *DocumentHandler) GetLibrary(w http.ResponseWriter, r *http.Request) {
 	var documents []*domain.Document
 	var positions map[string]*domain.ReadingPosition
 	received := 0
+	var firstErr error
 
 	for received < 2 {
 		select {
 		case err := <-errChan:
 			if err != nil {
-				h.logger.Error("Failed to load library data", err, "user_id", user.ID)
-				h.writeError(w, http.StatusInternalServerError, "Failed to load library data")
-				return
+				firstErr = err
 			}
 			received++
 		case docs := <-documentsChan:
@@ -165,6 +169,12 @@ func (h *DocumentHandler) GetLibrary(w http.ResponseWriter, r *http.Request) {
 			positions = pos
 			received++
 		}
+	}
+
+	if firstErr != nil {
+		h.logger.Error("Failed to load library data", firstErr, "user_id", user.ID)
+		h.writeError(w, http.StatusInternalServerError, "Failed to load library data")
+		return
 	}
 
 	// Combine documents with positions
