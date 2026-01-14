@@ -694,7 +694,10 @@ func (r *DocumentRepository) Search(userID, query string, token string) ([]*doma
 		}
 
 		// Search in author
-		authorMatch := strings.Contains(strings.ToLower(*doc.Author), queryLower)
+		authorMatch := false
+		if doc.Author != nil {
+			authorMatch = strings.Contains(strings.ToLower(*doc.Author), queryLower)
+		}
 
 		if titleMatch || contentMatch || authorMatch {
 			documents = append(documents, doc)
