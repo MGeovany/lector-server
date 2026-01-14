@@ -369,7 +369,7 @@ func (h *DocumentHandler) SearchDocuments(w http.ResponseWriter, r *http.Request
 	}
 
 	// Clean documents before returning
-	var cleanDocs []*domain.Document
+	var cleanDocs []*domain.DocumentData
 	for _, doc := range documents {
 		cleanDocs = append(cleanDocs, h.cleanDocumentForResponse(doc))
 	}

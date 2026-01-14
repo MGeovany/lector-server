@@ -64,7 +64,12 @@ func (s *DocumentService) SearchDocuments(userID, query string, token string) ([
 	if err != nil {
 		return nil, err
 	}
-	return documents, nil
+	// Convert []*Document to []*DocumentData (they're the same type, but Go requires explicit conversion for slices)
+	result := make([]*domain.DocumentData, len(documents))
+	for i, doc := range documents {
+		result[i] = doc
+	}
+	return result, nil
 }
 
 func (s *DocumentService) SetFavorite(userID string, documentID string, isFavorite bool, token string) error {
