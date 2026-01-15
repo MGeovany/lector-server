@@ -14,6 +14,7 @@ type mockAuthService struct {
 	user      *domain.SupabaseUser
 	err       error
 	lastToken string
+	disabled  bool
 }
 
 func (m *mockAuthService) ValidateToken(token string) (*domain.SupabaseUser, error) {
@@ -22,6 +23,10 @@ func (m *mockAuthService) ValidateToken(token string) (*domain.SupabaseUser, err
 		return nil, m.err
 	}
 	return m.user, nil
+}
+
+func (m *mockAuthService) IsAccountDisabled(userID string, token string) (bool, error) {
+	return m.disabled, nil
 }
 
 func TestAuthMiddleware_MissingHeader(t *testing.T) {
@@ -145,5 +150,31 @@ func TestAuthMiddleware_Success(t *testing.T) {
 	}
 	if !called {
 		t.Fatalf("expected next handler to be called")
+	}
+}
+
+func TestAuthMiddleware_AccountDisabled(t *testing.T) {
+	authService := &mockAuthService{
+		user:     &domain.SupabaseUser{ID: "user-1", Email: "test@example.com"},
+		disabled: true,
+	}
+	logger := NewMockHandlerLogger()
+
+	middleware := NewAuthMiddleware(authService, logger).Middleware
+	h := middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatalf("expected handler not to be called")
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Bearer good")
+	rr := httptest.NewRecorder()
+
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected status %d, got %d", http.StatusForbidden, rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "Account disabled") {
+		t.Fatalf("unexpected response body: %s", rr.Body.String())
 	}
 }

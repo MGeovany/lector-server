@@ -171,33 +171,6 @@ func (m *MockUserPreferencesService) UpdateReadingPosition(userID, documentID st
 	return nil
 }
 
-type MockHandlerLogger struct {
-	messages []string
-}
-
-func NewMockHandlerLogger() *MockHandlerLogger {
-	return &MockHandlerLogger{
-		messages: []string{},
-	}
-}
-
-func (m *MockHandlerLogger) Info(msg string, args ...interface{}) {
-	m.messages = append(m.messages, "INFO: "+msg)
-}
-
-func (m *MockHandlerLogger) Error(msg string, err error, args ...interface{}) {
-	m.messages = append(m.messages, "ERROR: "+msg+" - "+err.Error())
-}
-
-func (m *MockHandlerLogger) Debug(msg string, args ...interface{}) {
-	m.messages = append(m.messages, "DEBUG: "+msg)
-}
-
-func (m *MockHandlerLogger) Warn(msg string, args ...interface{}) {
-	m.messages = append(m.messages, "WARN: "+msg)
-}
-
-// Test context helpers
 func createContextWithUser(r *http.Request, user *domain.SupabaseUser) *http.Request {
 	ctx := context.WithValue(r.Context(), userContextKey, user)
 	return r.WithContext(ctx)
