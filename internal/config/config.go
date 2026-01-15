@@ -10,7 +10,6 @@ import (
 // AppConfig implements the domain.Config interface
 type AppConfig struct {
 	ServerPort  string
-	UploadPath  string
 	MaxFileSize int64
 	LogLevel    string
 	SupabaseURL string
@@ -24,7 +23,6 @@ func NewConfig() domain.Config {
 		// Cloud Run (and many PaaS) provide the listening port via PORT.
 		// Keep SERVER_PORT for local/dev compatibility.
 		ServerPort:  getEnvOrDefault("PORT", getEnvOrDefault("SERVER_PORT", "8080")),
-		UploadPath:  getEnvOrDefault("UPLOAD_PATH", "./uploads"),
 		MaxFileSize: getEnvInt64OrDefault("MAX_FILE_SIZE", 50*1024*1024), // 50MB default
 		LogLevel:    getEnvOrDefault("LOG_LEVEL", "info"),
 		SupabaseURL: getEnvOrDefault("SUPABASE_URL", ""),
@@ -36,11 +34,6 @@ func NewConfig() domain.Config {
 // GetServerPort returns the server port
 func (c *AppConfig) GetServerPort() string {
 	return c.ServerPort
-}
-
-// GetUploadPath returns the upload directory path
-func (c *AppConfig) GetUploadPath() string {
-	return c.UploadPath
 }
 
 // GetMaxFileSize returns the maximum allowed file size

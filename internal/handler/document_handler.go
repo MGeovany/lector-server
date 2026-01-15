@@ -268,9 +268,9 @@ func (h *DocumentHandler) SetFavorite(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.writeJSON(w, http.StatusOK, map[string]any{
-		"document_id":  documentID,
-		"is_favorite":  req.IsFavorite,
-		"updated":      true,
+		"document_id": documentID,
+		"is_favorite": req.IsFavorite,
+		"updated":     true,
 	})
 }
 
@@ -484,7 +484,7 @@ func (h *DocumentHandler) DeleteTag(w http.ResponseWriter, r *http.Request) {
 func (h *DocumentHandler) writeError(w http.ResponseWriter, statusCode int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(map[string]string{"error": message})
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
 }
 
 // cleanDocumentForResponse ensures the document content is safe for JSON serialization
@@ -519,5 +519,5 @@ func (h *DocumentHandler) cleanDocumentForResponse(doc *domain.Document) *domain
 func (h *DocumentHandler) writeJSON(w http.ResponseWriter, statusCode int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(data)
+	_ = json.NewEncoder(w).Encode(data)
 }

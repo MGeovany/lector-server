@@ -18,6 +18,24 @@ type ReadingPosition struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// Validate checks if the reading position has all required fields and valid values.
+// Returns an error if validation fails, nil otherwise.
+func (r *ReadingPosition) Validate() error {
+	if r.UserID == "" {
+		return &ValidationError{Field: "user_id", Message: "user ID is required"}
+	}
+	if r.DocumentID == "" {
+		return &ValidationError{Field: "document_id", Message: "document ID is required"}
+	}
+	if r.Progress < 0 || r.Progress > 1.0 {
+		return &ValidationError{Field: "progress", Message: "progress must be between 0 and 1"}
+	}
+	if r.PageNumber < 0 {
+		return &ValidationError{Field: "page_number", Message: "page number cannot be negative"}
+	}
+	return nil
+}
+
 type DocumentMetadata struct {
 	OriginalTitle  string `json:"original_title,omitempty"`
 	OriginalAuthor string `json:"original_author,omitempty"`
@@ -28,6 +46,21 @@ type DocumentMetadata struct {
 	Format         string `json:"format,omitempty"`
 	Source         string `json:"source,omitempty"`
 	HasPassword    bool   `json:"has_password,omitempty"`
+}
+
+// Validate checks if the metadata has valid values.
+// Returns an error if validation fails, nil otherwise.
+func (m *DocumentMetadata) Validate() error {
+	if m.FileSize < 0 {
+		return &ValidationError{Field: "file_size", Message: "file size cannot be negative"}
+	}
+	if m.PageCount < 0 {
+		return &ValidationError{Field: "page_count", Message: "page count cannot be negative"}
+	}
+	if m.WordCount < 0 {
+		return &ValidationError{Field: "word_count", Message: "word count cannot be negative"}
+	}
+	return nil
 }
 
 // Document represents a readable document owned by a user.
@@ -47,6 +80,24 @@ type Document struct {
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// Validate checks if the document has all required fields and valid values.
+// Returns an error if validation fails, nil otherwise.
+func (d *Document) Validate() error {
+	if d.ID == "" {
+		return &ValidationError{Field: "id", Message: "document ID is required"}
+	}
+	if d.UserID == "" {
+		return &ValidationError{Field: "user_id", Message: "user ID is required"}
+	}
+	if d.Title == "" {
+		return &ValidationError{Field: "title", Message: "title is required"}
+	}
+	if err := d.Metadata.Validate(); err != nil {
+		return err
+	}
+	return nil
 }
 
 // DocumentData is the data transfer representation used by services and handlers.

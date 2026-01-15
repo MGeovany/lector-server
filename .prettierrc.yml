@@ -1,0 +1,25 @@
+# Prettier configuration
+# See https://prettier.io/docs/en/options.html
+
+# Plugins
+plugins:
+  - "@prettier/plugin-go"
+
+# General formatting
+semi: true
+singleQuote: true
+tabWidth: 4
+useTabs: false
+trailingComma: none
+printWidth: 120
+
+# Go-specific settings
+go.tabWidth: 4
+go.useTabs: false
+
+# File extensions to format
+overrides:
+  - files: "*.go"
+    options:
+      tabWidth: 4
+      useTabs: false

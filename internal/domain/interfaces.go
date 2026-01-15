@@ -11,7 +11,6 @@ type Logger interface {
 // Config defines the interface for configuration management
 type Config interface {
 	GetServerPort() string
-	GetUploadPath() string
 	GetMaxFileSize() int64
 	GetLogLevel() string
 	GetSupabaseURL() string
