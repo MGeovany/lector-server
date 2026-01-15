@@ -15,10 +15,11 @@ func TestNewRouter_Health(t *testing.T) {
 	logger := NewMockHandlerLogger()
 
 	authHandler := NewAuthHandler(&config.Container{})
+	adminHandler := NewAdminHandler()
 	documentHandler := NewDocumentHandler(docService, prefService, logger)
 	preferenceHandler := NewPreferenceHandler(&config.Container{UserPreferencesService: prefService}, logger)
 
-	router := NewRouter(authHandler, documentHandler, preferenceHandler, func(next http.Handler) http.Handler { return next })
+	router := NewRouter(authHandler, adminHandler, documentHandler, preferenceHandler, func(next http.Handler) http.Handler { return next })
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	rr := httptest.NewRecorder()
