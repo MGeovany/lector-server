@@ -71,3 +71,40 @@ func (h *AuthHandler) ValidateToken(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(user)
 }
+
+// RequestAccountDeletion marks the account as disabled (persisted) so all devices are blocked.
+// The client is expected to also notify support via email (or future automation).
+func (h *AuthHandler) RequestAccountDeletion(w http.ResponseWriter, r *http.Request) {
+	user, ok := GetUserFromContext(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "User not found in context")
+		return
+	}
+
+	token, ok := GetTokenFromContext(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "Token not found in context")
+		return
+	}
+
+	client, err := h.container.SupabaseClient.GetClientWithToken(token)
+	if err != nil || client == nil {
+		writeError(w, http.StatusInternalServerError, "Failed to initialize database client")
+		return
+	}
+
+	// Upsert preferences row with account_disabled=true (do not touch other fields).
+	data := map[string]interface{}{
+		"user_id":          user.ID,
+		"account_disabled": true,
+	}
+	_, _, err = client.From("user_preferences").Upsert(data, "", "", "").Execute()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to disable account")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]string{"message": "Account disabled"})
+}

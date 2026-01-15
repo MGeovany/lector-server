@@ -9,6 +9,7 @@ import (
 
 func NewRouter(
 	authHandler *AuthHandler,
+	adminHandler *AdminHandler,
 	documentHandler *DocumentHandler,
 	preferenceHandler *PreferenceHandler,
 	authMiddleware func(http.Handler) http.Handler,
@@ -27,6 +28,10 @@ func NewRouter(
 	// API v1
 	api := router.PathPrefix("/api/v1").Subrouter()
 
+	// Admin routes (NOT behind auth middleware; protected by X-Admin-Secret)
+	admin := api.PathPrefix("/admin").Subrouter()
+	admin.HandleFunc("/users/{id}/account-disabled", adminHandler.SetAccountDisabled).Methods(http.MethodPost)
+
 	// Protected routes
 	protected := api.PathPrefix("").Subrouter()
 	protected.Use(authMiddleware)
@@ -35,6 +40,7 @@ func NewRouter(
 	protected.HandleFunc("/auth/profile", authHandler.GetProfile).Methods(http.MethodGet)
 	protected.HandleFunc("/auth/profile", authHandler.UpdateProfile).Methods(http.MethodPut)
 	protected.HandleFunc("/auth/validate", authHandler.ValidateToken).Methods(http.MethodGet)
+	protected.HandleFunc("/auth/account-deletion-request", authHandler.RequestAccountDeletion).Methods(http.MethodPost)
 
 	// Documents
 	// Gets all the card information

@@ -29,6 +29,7 @@ type UserPreferences struct {
 	FontSize   int       `json:"font_size"`
 	FontFamily string    `json:"font_family"`
 	Theme      string    `json:"theme"`
+	AccountDisabled bool `json:"account_disabled"`
 	Tags       []string  `json:"tags"`
 	UpdatedAt  time.Time `json:"updated_at"`
 }

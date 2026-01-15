@@ -52,6 +52,17 @@ func (m *AuthMiddleware) Middleware(next http.Handler) http.Handler {
 			return
 		}
 
+		disabled, err := m.authService.IsAccountDisabled(user.ID, token)
+		if err != nil {
+			m.logger.Error("Failed to check account status", err, "user_id", user.ID)
+			writeError(w, http.StatusInternalServerError, "Failed to validate account status")
+			return
+		}
+		if disabled {
+			writeError(w, http.StatusForbidden, "Account disabled")
+			return
+		}
+
 		ctx := context.WithValue(r.Context(), userContextKey, user)
 		ctx = context.WithValue(ctx, tokenContextKey, token)
 		next.ServeHTTP(w, r.WithContext(ctx))

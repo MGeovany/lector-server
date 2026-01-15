@@ -315,6 +315,7 @@ func (r *UserPreferencesRepository) mapToPreferences(data map[string]interface{}
 		FontSize:   getInt(data, "font_size"),
 		FontFamily: getString(data, "font_family"),
 		Theme:      getString(data, "theme"),
+		AccountDisabled: getBool(data, "account_disabled"),
 		Tags:       []string{}, // Tags are loaded separately from user_tags table
 		UpdatedAt:  time.Now(),
 	}
@@ -390,4 +391,22 @@ func getFloat64(data map[string]interface{}, key string) float64 {
 		}
 	}
 	return 0.0
+}
+
+func getBool(data map[string]interface{}, key string) bool {
+	if val, ok := data[key]; ok && val != nil {
+		switch v := val.(type) {
+		case bool:
+			return v
+		case string:
+			return v == "true" || v == "1"
+		case float64:
+			return v != 0
+		case int:
+			return v != 0
+		case int64:
+			return v != 0
+		}
+	}
+	return false
 }
