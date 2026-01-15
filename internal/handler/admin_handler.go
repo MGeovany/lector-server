@@ -77,4 +77,3 @@ func (h *AdminHandler) SetAccountDisabled(w http.ResponseWriter, r *http.Request
 		"account_disabled": req.AccountDisabled,
 	})
 }
-

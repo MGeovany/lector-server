@@ -311,13 +311,13 @@ func (r *UserPreferencesRepository) UpdateReadingPosition(position *domain.Readi
 // mapToPreferences converts a map to a UserPreferences struct
 func (r *UserPreferencesRepository) mapToPreferences(data map[string]interface{}) (*domain.UserPreferences, error) {
 	prefs := &domain.UserPreferences{
-		UserID:     getString(data, "user_id"),
-		FontSize:   getInt(data, "font_size"),
-		FontFamily: getString(data, "font_family"),
-		Theme:      getString(data, "theme"),
+		UserID:          getString(data, "user_id"),
+		FontSize:        getInt(data, "font_size"),
+		FontFamily:      getString(data, "font_family"),
+		Theme:           getString(data, "theme"),
 		AccountDisabled: getBool(data, "account_disabled"),
-		Tags:       []string{}, // Tags are loaded separately from user_tags table
-		UpdatedAt:  time.Now(),
+		Tags:            []string{}, // Tags are loaded separately from user_tags table
+		UpdatedAt:       time.Now(),
 	}
 
 	// Parse updated_at if available
