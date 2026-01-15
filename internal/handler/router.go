@@ -22,7 +22,7 @@ func NewRouter(
 	router.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok","service":"pdf-text-reader"}`))
+		_, _ = w.Write([]byte(`{"status":"ok","service":"pdf-text-reader"}`))
 	}).Methods(http.MethodGet)
 
 	// API v1

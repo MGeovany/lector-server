@@ -332,25 +332,6 @@ func (r *UserPreferencesRepository) mapToPreferences(data map[string]interface{}
 	return prefs, nil
 }
 
-// getStringArray extracts a string array from a map
-func getStringArray(data map[string]interface{}, key string) []string {
-	if val, ok := data[key]; ok && val != nil {
-		switch v := val.(type) {
-		case []string:
-			return v
-		case []interface{}:
-			result := make([]string, 0, len(v))
-			for _, item := range v {
-				if str, ok := item.(string); ok {
-					result = append(result, str)
-				}
-			}
-			return result
-		}
-	}
-	return []string{}
-}
-
 // mapToReadingPosition converts a map to a ReadingPosition struct
 func (r *UserPreferencesRepository) mapToReadingPosition(data map[string]interface{}) (*domain.ReadingPosition, error) {
 	position := &domain.ReadingPosition{

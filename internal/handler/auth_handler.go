@@ -9,8 +9,7 @@ import (
 
 // AuthHandler handles authentication-related requests
 type AuthHandler struct {
-	container      *config.Container
-	authMiddleware *AuthMiddleware
+	container *config.Container
 }
 
 // NewAuthHandler creates a new authentication handler
@@ -30,7 +29,7 @@ func (h *AuthHandler) GetProfile(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(user)
+	_ = json.NewEncoder(w).Encode(user)
 }
 
 // UpdateProfile updates the current user's profile information
@@ -57,7 +56,7 @@ func (h *AuthHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(user)
+	_ = json.NewEncoder(w).Encode(user)
 }
 
 func (h *AuthHandler) ValidateToken(w http.ResponseWriter, r *http.Request) {
@@ -69,7 +68,7 @@ func (h *AuthHandler) ValidateToken(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(user)
+	_ = json.NewEncoder(w).Encode(user)
 }
 
 // RequestAccountDeletion marks the account as disabled (persisted) so all devices are blocked.
