@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -29,7 +30,7 @@ type setAccountDisabledRequest struct {
 func (h *AdminHandler) SetAccountDisabled(w http.ResponseWriter, r *http.Request) {
 	secret := r.Header.Get("X-Admin-Secret")
 	expected := os.Getenv("ADMIN_API_SECRET")
-	if expected == "" || secret == "" || secret != expected {
+	if expected == "" || secret == "" || subtle.ConstantTimeCompare([]byte(secret), []byte(expected)) != 1 {
 		writeError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
