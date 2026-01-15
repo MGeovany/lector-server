@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sync"
 
 	"github.com/gorilla/mux"
 	"github.com/supabase-community/supabase-go"
@@ -13,10 +14,29 @@ import (
 
 // AdminHandler exposes admin-only endpoints protected by X-Admin-Secret.
 // These endpoints are intended for internal use (support tooling) and should not be exposed publicly without additional safeguards.
-type AdminHandler struct{}
+type AdminHandler struct {
+	clientOnce sync.Once
+	client     *supabase.Client
+	clientErr  error
+}
 
 func NewAdminHandler() *AdminHandler {
 	return &AdminHandler{}
+}
+
+func (h *AdminHandler) serviceRoleClient() (*supabase.Client, error) {
+	h.clientOnce.Do(func() {
+		supabaseURL := os.Getenv("SUPABASE_URL")
+		serviceRoleKey := os.Getenv("SUPABASE_SERVICE_ROLE_KEY")
+		if supabaseURL == "" || serviceRoleKey == "" {
+			h.clientErr = fmt.Errorf("missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
+			return
+		}
+
+		h.client, h.clientErr = supabase.NewClient(supabaseURL, serviceRoleKey, &supabase.ClientOptions{})
+	})
+
+	return h.client, h.clientErr
 }
 
 type setAccountDisabledRequest struct {
@@ -48,16 +68,9 @@ func (h *AdminHandler) SetAccountDisabled(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	supabaseURL := os.Getenv("SUPABASE_URL")
-	serviceRoleKey := os.Getenv("SUPABASE_SERVICE_ROLE_KEY")
-	if supabaseURL == "" || serviceRoleKey == "" {
-		writeError(w, http.StatusInternalServerError, "Server misconfigured")
-		return
-	}
-
-	client, err := supabase.NewClient(supabaseURL, serviceRoleKey, &supabase.ClientOptions{})
+	client, err := h.serviceRoleClient()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Failed to initialize database client")
+		writeError(w, http.StatusInternalServerError, "Server misconfigured")
 		return
 	}
 
