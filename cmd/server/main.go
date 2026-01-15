@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"pdf-text-reader/internal/config"
 	"pdf-text-reader/internal/handler"
@@ -52,8 +53,12 @@ func main() {
 
 	// start server
 	server := &http.Server{
-		Addr:    ":" + container.Config.GetServerPort(),
-		Handler: router,
+		Addr:              ":" + container.Config.GetServerPort(),
+		Handler:           router,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       2 * time.Minute,
 	}
 
 	// Run server

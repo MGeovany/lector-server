@@ -28,5 +28,5 @@ func GetTokenFromContext(r *http.Request) (string, bool) {
 func writeError(w http.ResponseWriter, statusCode int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	w.Write([]byte(`{"error":"` + message + `"}`))
+	_, _ = w.Write([]byte(`{"error":"` + message + `"}`))
 }

@@ -1,0 +1,20 @@
+# Ignore files for Prettier formatting
+*.log
+*.tmp
+coverage.out
+coverage.html
+.env
+.env.local
+.env.*.local
+node_modules/
+bin/
+build/
+dist/
+*.tar.gz
+*.zip
+
+# Go-specific ignores
+*.sum
+vendor/
+.vscode/
+.idea/

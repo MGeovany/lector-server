@@ -42,3 +42,4 @@ uploads/
 
 # Supabase
 db/
+coverage.html

@@ -857,20 +857,6 @@ func getStringPointer(data map[string]interface{}, key string) *string {
 	return nil
 }
 
-func getInt64(data map[string]interface{}, key string) int64 {
-	if val, ok := data[key]; ok && val != nil {
-		switch v := val.(type) {
-		case int64:
-			return v
-		case int:
-			return int64(v)
-		case float64:
-			return int64(v)
-		}
-	}
-	return 0
-}
-
 // getStringArray is defined in user_preference_repository.go and shared across the package
 
 // GetTagsByUserID retrieves all tags for a user from the user_tags table
