@@ -87,10 +87,12 @@ jobs:
       with:
         go-version: '1.24'
     
+    - name: Install Gosec
+      run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+    
     - name: Run Gosec Security Scanner
-      uses: securecodewarrior/github-action-gosec@master
-      with:
-        args: '-no-fail -fmt sarif -out results.sarif ./...'
+      run: |
+        ~/go/bin/gosec -no-fail -fmt sarif -out results.sarif ./...
     
     - name: Upload SARIF file
       uses: github/codeql-action/upload-sarif@v2
@@ -125,15 +127,31 @@ jobs:
     - name: Build application
       run: make build
     
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v1
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+    
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v1
+    
+    - name: Configure Docker for GCR
+      run: gcloud auth configure-docker
+    
     - name: Build Docker image
       run: |
-        docker build -t pdf-text-reader:${{ github.sha }} .
-        docker tag pdf-text-reader:${{ github.sha }} pdf-text-reader:latest
+        docker build -t gcr.io/${{ secrets.GCP_PROJECT_ID }}/pdf-text-reader:${{ github.sha }} .
+        docker tag gcr.io/${{ secrets.GCP_PROJECT_ID }}/pdf-text-reader:${{ github.sha }} gcr.io/${{ secrets.GCP_PROJECT_ID }}/pdf-text-reader:latest
+    
+    - name: Push Docker image to GCR
+      run: |
+        docker push gcr.io/${{ secrets.GCP_PROJECT_ID }}/pdf-text-reader:${{ github.sha }}
+        docker push gcr.io/${{ secrets.GCP_PROJECT_ID }}/pdf-text-reader:latest
     
     - name: Run Docker security scan
       uses: aquasecurity/trivy-action@master
       with:
-        image-ref: 'pdf-text-reader:latest'
+        image-ref: 'gcr.io/${{ secrets.GCP_PROJECT_ID }}/pdf-text-reader:latest'
         format: 'sarif'
         output: 'trivy-results.sarif'
     
@@ -156,7 +174,7 @@ jobs:
     - name: Deploy to Cloud Run
       uses: google-github-actions/deploy-cloudrun@v0
       with:
-        image: 'pdf-text-reader:${{ github.sha }}'
+        image: 'gcr.io/${{ secrets.GCP_PROJECT_ID }}/pdf-text-reader:${{ github.sha }}'
         service: 'pdf-text-reader-staging'
         region: 'us-central1'
         project_id: ${{ secrets.GCP_PROJECT_ID }}
@@ -183,7 +201,7 @@ jobs:
     - name: Deploy to Cloud Run
       uses: google-github-actions/deploy-cloudrun@v0
       with:
-        image: 'pdf-text-reader:${{ github.sha }}'
+        image: 'gcr.io/${{ secrets.GCP_PROJECT_ID }}/pdf-text-reader:${{ github.sha }}'
         service: 'pdf-text-reader'
         region: 'us-central1'
         project_id: ${{ secrets.GCP_PROJECT_ID }}

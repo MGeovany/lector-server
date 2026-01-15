@@ -63,31 +63,7 @@ lint: ## Run linter
 		echo "golangci-lint not found. Installing..."; \
 		$(GO) install github.com/golangci/golangci-lint/cmd/golangci-lint@latest; \
 		~/go/bin/golangci-lint run; \
-	fi
-
-fmt: ## Format code
-	$(GO) fmt ./...
-	@if command -v npx >/dev/null 2>&1 && [ -f package.json ]; then \
-		npx prettier --write "**/*.go" 2>/dev/null || true; \
-	fi
-
-install-deps: ## Install dependencies
-	$(GO) mod download
-	$(GO) install github.com/air-verse/air@latest
-
-kill-port: ## Kill process using port 8080
-	@echo "Killing process on port 8080..."
-	@lsof -ti :8080 | xargs kill -9 2>/dev/null || echo "No process found on port 8080"
-
-check-env: ## Check if environment is properly configured
-	@echo "Checking environment configuration..."
-	@if [ ! -f .env ]; then echo "❌ .env file not found"; exit 1; fi
-	@if ! grep -q "SUPABASE_URL=https://" .env; then echo "⚠️  Please configure SUPABASE_URL in .env"; fi
-	@if ! grep -q "SUPABASE_ANON_KEY=" .env; then echo "⚠️  Please configure SUPABASE_ANON_KEY in .env"; fi
-	@echo "✅ Environment check complete"
-
-vet: ## Run go vet
-	$(GO) vet ./...
+		fi
 
 check-env: ## Check if environment is properly configured
 	@echo "Checking environment configuration..."
