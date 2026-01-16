@@ -25,13 +25,15 @@ type SupabaseUser struct {
 
 // UserPreferences represents user's reading preferences
 type UserPreferences struct {
-	UserID          string    `json:"user_id"`
-	FontSize        int       `json:"font_size"`
-	FontFamily      string    `json:"font_family"`
-	Theme           string    `json:"theme"`
-	AccountDisabled bool      `json:"account_disabled"`
-	Tags            []string  `json:"tags"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	UserID            string    `json:"user_id"`
+	FontSize          int       `json:"font_size"`
+	FontFamily        string    `json:"font_family"`
+	Theme             string    `json:"theme"`
+	SubscriptionPlan  string    `json:"subscription_plan"`
+	StorageLimitBytes int64     `json:"storage_limit_bytes"`
+	AccountDisabled   bool      `json:"account_disabled"`
+	Tags              []string  `json:"tags"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }
 
 type UserPreferencesService interface {

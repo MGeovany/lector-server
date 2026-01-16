@@ -51,6 +51,7 @@ func NewContainer() *Container {
 
 	documentService := service.NewDocumentService(
 		documentRepo,
+		preferenceRepo,
 		storageService,
 		log,
 	)

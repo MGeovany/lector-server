@@ -18,18 +18,21 @@ import (
 type DocumentService struct {
 	storage      StorageService
 	repo         domain.DocumentRepository
+	prefsRepo    domain.UserPreferencesRepository
 	logger       domain.Logger
 	pdfProcessor *PDFProcessor
 }
 
 func NewDocumentService(
 	repo domain.DocumentRepository,
+	prefsRepo domain.UserPreferencesRepository,
 	storage StorageService,
 	logger domain.Logger,
 ) *DocumentService {
 	return &DocumentService{
 		storage:      storage,
 		repo:         repo,
+		prefsRepo:    prefsRepo,
 		logger:       logger,
 		pdfProcessor: NewPDFProcessor(logger),
 	}
@@ -173,8 +176,16 @@ func (s *DocumentService) Upload(
 	token string,
 	originalName string,
 ) (*domain.DocumentData, error) {
-
-	const maxUserStorage = 15 * 1024 * 1024 // 15MB
+	// Determine per-user storage quota from preferences.
+	// Default: 15MB (free). Paid: 50GB.
+	maxUserStorage := int64(15 * 1024 * 1024)
+	if s.prefsRepo != nil {
+		if prefs, err := s.prefsRepo.GetPreferences(userID, token); err == nil && prefs != nil {
+			if prefs.StorageLimitBytes > 0 {
+				maxUserStorage = prefs.StorageLimitBytes
+			}
+		}
+	}
 
 	docID := uuid.New().String()
 	// Path should be relative to bucket, not include bucket name

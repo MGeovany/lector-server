@@ -67,6 +67,9 @@ func NewRouter(
 	// Get all the docs by user ID
 	protected.HandleFunc("/documents/user/{id}", documentHandler.GetDocumentsByUserID).Methods(http.MethodGet)
 
+	// Storage usage/limit (authenticated user)
+	protected.HandleFunc("/storage/usage", documentHandler.GetStorageUsage).Methods(http.MethodGet)
+
 	// Get all document tags for the authenticated user
 	protected.HandleFunc("/document-tags", documentHandler.GetDocumentTags).Methods(http.MethodGet)
 
