@@ -248,6 +248,69 @@ func (h *DocumentHandler) UploadDocument(w http.ResponseWriter, r *http.Request)
 	h.writeJSON(w, 201, cleanDoc)
 }
 
+// GetStorageUsage returns current storage usage and limit for authenticated user.
+func (h *DocumentHandler) GetStorageUsage(w http.ResponseWriter, r *http.Request) {
+	user, ok := GetUserFromContext(r)
+	if !ok {
+		h.writeError(w, http.StatusUnauthorized, "User not found in context")
+		return
+	}
+
+	token, ok := GetTokenFromContext(r)
+	if !ok {
+		h.writeError(w, http.StatusUnauthorized, "Token not found in context")
+		return
+	}
+
+	prefs, err := h.preferenceService.GetPreferences(user.ID, token)
+	if err != nil {
+		h.writeError(w, http.StatusInternalServerError, "Failed to retrieve preferences")
+		return
+	}
+
+	limit := prefs.StorageLimitBytes
+	if limit <= 0 {
+		limit = 15 * 1024 * 1024
+	}
+
+	docs, err := h.documentService.GetDocumentsByUserID(user.ID, token)
+	if err != nil {
+		h.writeError(w, http.StatusInternalServerError, "Failed to retrieve documents")
+		return
+	}
+
+	var used int64
+	for _, d := range docs {
+		if d == nil {
+			continue
+		}
+		used += d.Metadata.FileSize
+	}
+
+	type resp struct {
+		UsedBytes  int64   `json:"used_bytes"`
+		LimitBytes int64   `json:"limit_bytes"`
+		Percent    float64 `json:"percent"`
+	}
+
+	percent := 0.0
+	if limit > 0 {
+		percent = float64(used) / float64(limit)
+		if percent < 0 {
+			percent = 0
+		}
+		if percent > 1 {
+			percent = 1
+		}
+	}
+
+	h.writeJSON(w, http.StatusOK, resp{
+		UsedBytes:  used,
+		LimitBytes: limit,
+		Percent:    percent,
+	})
+}
+
 // GetDocument handles getting a specific document
 func (h *DocumentHandler) GetDocument(w http.ResponseWriter, r *http.Request) {
 	user, ok := GetUserFromContext(r)

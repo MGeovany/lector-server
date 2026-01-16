@@ -52,11 +52,13 @@ func (r *UserPreferencesRepository) GetPreferences(userID string, token string) 
 	if len(prefsData) == 0 {
 		// Return default preferences if none exist
 		prefs = &domain.UserPreferences{
-			UserID:     userID,
-			FontSize:   16,
-			FontFamily: "system-ui",
-			Theme:      "light",
-			Tags:       []string{},
+			UserID:            userID,
+			FontSize:          16,
+			FontFamily:        "system-ui",
+			Theme:             "light",
+			SubscriptionPlan:  "free",
+			StorageLimitBytes: 15 * 1024 * 1024,
+			Tags:              []string{},
 		}
 	} else {
 		prefs, err = r.mapToPreferences(prefsData[0])
@@ -99,10 +101,12 @@ func (r *UserPreferencesRepository) UpdatePreferences(prefs *domain.UserPreferen
 
 	// Update user_preferences (without tags - tags are in separate table)
 	data := map[string]interface{}{
-		"user_id":     prefs.UserID,
-		"font_size":   prefs.FontSize,
-		"font_family": prefs.FontFamily,
-		"theme":       prefs.Theme,
+		"user_id":             prefs.UserID,
+		"font_size":           prefs.FontSize,
+		"font_family":         prefs.FontFamily,
+		"theme":               prefs.Theme,
+		"subscription_plan":   prefs.SubscriptionPlan,
+		"storage_limit_bytes": prefs.StorageLimitBytes,
 		// Don't send updated_at - the database trigger will handle it
 	}
 
@@ -311,13 +315,23 @@ func (r *UserPreferencesRepository) UpdateReadingPosition(position *domain.Readi
 // mapToPreferences converts a map to a UserPreferences struct
 func (r *UserPreferencesRepository) mapToPreferences(data map[string]interface{}) (*domain.UserPreferences, error) {
 	prefs := &domain.UserPreferences{
-		UserID:          getString(data, "user_id"),
-		FontSize:        getInt(data, "font_size"),
-		FontFamily:      getString(data, "font_family"),
-		Theme:           getString(data, "theme"),
-		AccountDisabled: getBool(data, "account_disabled"),
-		Tags:            []string{}, // Tags are loaded separately from user_tags table
-		UpdatedAt:       time.Now(),
+		UserID:            getString(data, "user_id"),
+		FontSize:          getInt(data, "font_size"),
+		FontFamily:        getString(data, "font_family"),
+		Theme:             getString(data, "theme"),
+		SubscriptionPlan:  getString(data, "subscription_plan"),
+		StorageLimitBytes: getInt64(data, "storage_limit_bytes"),
+		AccountDisabled:   getBool(data, "account_disabled"),
+		Tags:              []string{}, // Tags are loaded separately from user_tags table
+		UpdatedAt:         time.Now(),
+	}
+
+	// Backfill defaults for older rows.
+	if prefs.SubscriptionPlan == "" {
+		prefs.SubscriptionPlan = "free"
+	}
+	if prefs.StorageLimitBytes <= 0 {
+		prefs.StorageLimitBytes = 15 * 1024 * 1024
 	}
 
 	// Parse updated_at if available
@@ -330,6 +344,20 @@ func (r *UserPreferencesRepository) mapToPreferences(data map[string]interface{}
 	}
 
 	return prefs, nil
+}
+
+func getInt64(data map[string]interface{}, key string) int64 {
+	if val, ok := data[key]; ok && val != nil {
+		switch v := val.(type) {
+		case int:
+			return int64(v)
+		case int64:
+			return v
+		case float64:
+			return int64(v)
+		}
+	}
+	return 0
 }
 
 // mapToReadingPosition converts a map to a ReadingPosition struct

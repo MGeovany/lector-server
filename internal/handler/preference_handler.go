@@ -108,6 +108,12 @@ func (h *PreferenceHandler) UpdatePreferences(w http.ResponseWriter, r *http.Req
 		currentPrefs.Theme = theme
 	}
 
+	// Handle subscription_plan (server sets storage_limit_bytes based on this).
+	if plan, ok := prefsUpdate["subscription_plan"].(string); ok {
+		currentPrefs.SubscriptionPlan = plan
+		currentPrefs.StorageLimitBytes = storageLimitBytesForPlan(plan)
+	}
+
 	// Handle tags (can be []interface{} or []string from JSON)
 	if tagsVal, ok := prefsUpdate["tags"]; ok {
 		switch v := tagsVal.(type) {
@@ -140,6 +146,16 @@ func (h *PreferenceHandler) UpdatePreferences(w http.ResponseWriter, r *http.Req
 	}
 
 	h.writeJSON(w, http.StatusOK, updatedPrefs)
+}
+
+func storageLimitBytesForPlan(plan string) int64 {
+	// Use decimal GB to match UX (50GB = 50,000,000,000 bytes)
+	switch plan {
+	case "pro_monthly", "pro_yearly", "founder_lifetime":
+		return 50_000_000_000
+	default:
+		return 15 * 1024 * 1024
+	}
 }
 
 // GetReadingPosition handles getting reading position for a document

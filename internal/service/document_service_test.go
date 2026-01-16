@@ -151,7 +151,7 @@ func TestDocumentService_GetDocumentsByUserID(t *testing.T) {
 	storage := NewMockStorageService()
 	logger := NewMockLogger()
 
-	service := NewDocumentService(repo, storage, logger)
+	service := NewDocumentService(repo, nil, storage, logger)
 
 	// Create test documents
 	doc1 := &domain.Document{
@@ -188,7 +188,7 @@ func TestDocumentService_GetDocument(t *testing.T) {
 	storage := NewMockStorageService()
 	logger := NewMockLogger()
 
-	service := NewDocumentService(repo, storage, logger)
+	service := NewDocumentService(repo, nil, storage, logger)
 
 	// Create test document
 	doc := &domain.Document{
@@ -221,7 +221,7 @@ func TestDocumentService_DeleteDocument(t *testing.T) {
 	storage := NewMockStorageService()
 	logger := NewMockLogger()
 
-	service := NewDocumentService(repo, storage, logger)
+	service := NewDocumentService(repo, nil, storage, logger)
 
 	// Create test document
 	doc := &domain.Document{
@@ -256,7 +256,7 @@ func TestDocumentService_SearchDocuments(t *testing.T) {
 	storage := NewMockStorageService()
 	logger := NewMockLogger()
 
-	service := NewDocumentService(repo, storage, logger)
+	service := NewDocumentService(repo, nil, storage, logger)
 
 	// Create test documents
 	doc1 := &domain.Document{
@@ -313,7 +313,7 @@ func TestDocumentService_SetFavorite(t *testing.T) {
 	storage := NewMockStorageService()
 	logger := NewMockLogger()
 
-	service := NewDocumentService(repo, storage, logger)
+	service := NewDocumentService(repo, nil, storage, logger)
 
 	// Create test document
 	doc := &domain.Document{
@@ -359,7 +359,7 @@ func TestDocumentService_UpdateDocumentDetails(t *testing.T) {
 	storage := NewMockStorageService()
 	logger := NewMockLogger()
 
-	service := NewDocumentService(repo, storage, logger)
+	service := NewDocumentService(repo, nil, storage, logger)
 
 	// Create test document
 	doc := &domain.Document{
@@ -404,7 +404,7 @@ func TestDocumentService_GetDocumentTags(t *testing.T) {
 	storage := NewMockStorageService()
 	logger := NewMockLogger()
 
-	service := NewDocumentService(repo, storage, logger)
+	service := NewDocumentService(repo, nil, storage, logger)
 
 	// Add some tags for user1
 	_ = repo.CreateTag("user1", "programming", "token")
@@ -437,7 +437,7 @@ func TestDocumentService_CreateTag(t *testing.T) {
 	storage := NewMockStorageService()
 	logger := NewMockLogger()
 
-	service := NewDocumentService(repo, storage, logger)
+	service := NewDocumentService(repo, nil, storage, logger)
 
 	// Test creating valid tag
 	err := service.CreateTag("user1", "programming", "token")
@@ -463,7 +463,7 @@ func TestDocumentService_DeleteTag(t *testing.T) {
 	storage := NewMockStorageService()
 	logger := NewMockLogger()
 
-	service := NewDocumentService(repo, storage, logger)
+	service := NewDocumentService(repo, nil, storage, logger)
 
 	// Create a tag first
 	_ = repo.CreateTag("user1", "programming", "token")
