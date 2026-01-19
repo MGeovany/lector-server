@@ -331,7 +331,9 @@ func (r *UserPreferencesRepository) mapToPreferences(data map[string]interface{}
 		prefs.SubscriptionPlan = "free"
 	}
 	if prefs.StorageLimitBytes <= 0 {
-		prefs.StorageLimitBytes = 15 * 1024 * 1024
+		// If storage_limit_bytes is missing, derive it from the plan so Pro users
+		// still get the correct quota.
+		prefs.StorageLimitBytes = domain.StorageLimitBytesForPlan(prefs.SubscriptionPlan)
 	}
 
 	// Parse updated_at if available

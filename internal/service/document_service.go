@@ -178,11 +178,14 @@ func (s *DocumentService) Upload(
 ) (*domain.DocumentData, error) {
 	// Determine per-user storage quota from preferences.
 	// Default: 15MB (free). Paid: 50GB.
-	maxUserStorage := int64(15 * 1024 * 1024)
+	maxUserStorage := domain.StorageLimitBytesForPlan("free")
 	if s.prefsRepo != nil {
 		if prefs, err := s.prefsRepo.GetPreferences(userID, token); err == nil && prefs != nil {
+			// Prefer explicit storage_limit_bytes, but fall back to computing from plan.
 			if prefs.StorageLimitBytes > 0 {
 				maxUserStorage = prefs.StorageLimitBytes
+			} else {
+				maxUserStorage = domain.StorageLimitBytesForPlan(prefs.SubscriptionPlan)
 			}
 		}
 	}

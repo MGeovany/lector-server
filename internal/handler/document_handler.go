@@ -275,7 +275,7 @@ func (h *DocumentHandler) GetStorageUsage(w http.ResponseWriter, r *http.Request
 
 	limit := prefs.StorageLimitBytes
 	if limit <= 0 {
-		limit = 15 * 1024 * 1024
+		limit = domain.StorageLimitBytesForPlan(prefs.SubscriptionPlan)
 	}
 
 	docs, err := h.documentService.GetDocumentsByUserID(user.ID, token)
