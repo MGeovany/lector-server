@@ -40,6 +40,11 @@ func main() {
 		container.Logger,
 	)
 
+	highlightHandler := handler.NewHighlightHandler(
+		container,
+		container.Logger,
+	)
+
 	authMiddleware := handler.NewAuthMiddleware(
 		container.AuthService,
 		container.Logger,
@@ -51,6 +56,7 @@ func main() {
 		adminHandler,
 		documentHandler,
 		preferenceHandler,
+		highlightHandler,
 		authMiddleware.Middleware,
 	)
 
