@@ -95,6 +95,11 @@ func (h *DocumentHandler) GetDocumentsByUserID(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	// Ensure JSON is [] not null when there are no documents.
+	if documents == nil {
+		documents = make([]*domain.DocumentData, 0)
+	}
+
 	// Attach reading_position onto each document (inline) to avoid extra fetches on clients.
 	if positions != nil && documents != nil {
 		for _, doc := range documents {
@@ -499,6 +504,11 @@ func (h *DocumentHandler) SearchDocuments(w http.ResponseWriter, r *http.Request
 		cleanDocs = append(cleanDocs, h.cleanDocumentForResponse(doc))
 	}
 
+	// Ensure JSON is [] not null when empty.
+	if cleanDocs == nil {
+		cleanDocs = make([]*domain.DocumentData, 0)
+	}
+
 	h.writeJSON(w, http.StatusOK, cleanDocs)
 }
 
@@ -521,6 +531,11 @@ func (h *DocumentHandler) GetDocumentTags(w http.ResponseWriter, r *http.Request
 		h.logger.Error("Failed to get document tags", err, "user_id", user.ID)
 		h.writeError(w, http.StatusInternalServerError, "Failed to get document tags")
 		return
+	}
+
+	// Ensure JSON is [] not null when empty.
+	if tags == nil {
+		tags = make([]string, 0)
 	}
 
 	h.writeJSON(w, http.StatusOK, tags)
