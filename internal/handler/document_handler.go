@@ -101,7 +101,7 @@ func (h *DocumentHandler) GetDocumentsByUserID(w http.ResponseWriter, r *http.Re
 	}
 
 	// Attach reading_position onto each document (inline) to avoid extra fetches on clients.
-	if positions != nil && documents != nil {
+	if positions != nil {
 		for _, doc := range documents {
 			if doc == nil {
 				continue
