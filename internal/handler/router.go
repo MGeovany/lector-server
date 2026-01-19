@@ -12,6 +12,7 @@ func NewRouter(
 	adminHandler *AdminHandler,
 	documentHandler *DocumentHandler,
 	preferenceHandler *PreferenceHandler,
+	highlightHandler *HighlightHandler,
 	authMiddleware func(http.Handler) http.Handler,
 
 ) http.Handler {
@@ -89,6 +90,11 @@ func NewRouter(
 
 	// Get all reading positions for the authenticated user
 	protected.HandleFunc("/preferences/reading-positions", preferenceHandler.GetAllReadingPositions).Methods(http.MethodGet)
+
+	// Highlights
+	protected.HandleFunc("/highlights", highlightHandler.ListHighlights).Methods(http.MethodGet)
+	protected.HandleFunc("/highlights", highlightHandler.CreateHighlight).Methods(http.MethodPost)
+	protected.HandleFunc("/highlights/{id}", highlightHandler.DeleteHighlight).Methods(http.MethodDelete)
 
 	// CORS
 	c := cors.New(cors.Options{

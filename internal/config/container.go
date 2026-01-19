@@ -17,6 +17,7 @@ type Container struct {
 	AuthService            domain.AuthService
 	StorageService         domain.StorageService
 	UserPreferencesService domain.UserPreferencesService
+	HighlightService       domain.HighlightService
 }
 
 // NewContainer creates a new dependency injection container
@@ -38,6 +39,11 @@ func NewContainer() *Container {
 	)
 
 	preferenceRepo := repository.NewUserPreferencesRepository(
+		supabaseClient,
+		log,
+	)
+
+	highlightRepo := repository.NewHighlightRepository(
 		supabaseClient,
 		log,
 	)
@@ -66,6 +72,11 @@ func NewContainer() *Container {
 		log,
 	)
 
+	highlightService := service.NewHighlightService(
+		highlightRepo,
+		log,
+	)
+
 	return &Container{
 		Config:                 cfg,
 		Logger:                 log,
@@ -74,5 +85,6 @@ func NewContainer() *Container {
 		AuthService:            authService,
 		StorageService:         storageService,
 		UserPreferencesService: userPreferencesService,
+		HighlightService:       highlightService,
 	}
 }
