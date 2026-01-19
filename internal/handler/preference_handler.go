@@ -149,13 +149,7 @@ func (h *PreferenceHandler) UpdatePreferences(w http.ResponseWriter, r *http.Req
 }
 
 func storageLimitBytesForPlan(plan string) int64 {
-	// Use decimal GB to match UX (50GB = 50,000,000,000 bytes)
-	switch plan {
-	case "pro_monthly", "pro_yearly", "founder_lifetime":
-		return 50_000_000_000
-	default:
-		return 15 * 1024 * 1024
-	}
+	return domain.StorageLimitBytesForPlan(plan)
 }
 
 // GetReadingPosition handles getting reading position for a document
