@@ -302,15 +302,15 @@ func (s *DocumentService) Upload(
 		return nil, err
 	}
 
-	processAndUpdate := func() {
+	processAndUpdate := func(target *domain.DocumentData) {
 		blocks, pdfMetadata, err := s.pdfProcessor.ProcessPDF(fileBytes)
 		if err != nil {
 			s.logger.Error("Failed to process PDF", err, "doc_id", docID)
 			msg := err.Error()
-			doc.ProcessingStatus = "failed"
-			doc.ProcessingError = &msg
-			doc.UpdatedAt = time.Now().UTC()
-			if err := s.repo.Update(doc, token); err != nil {
+			target.ProcessingStatus = "failed"
+			target.ProcessingError = &msg
+			target.UpdatedAt = time.Now().UTC()
+			if err := s.repo.Update(target, token); err != nil {
 				s.logger.Error("Failed to update document after processing failure", err, "doc_id", docID)
 			}
 			return
@@ -330,33 +330,33 @@ func (s *DocumentService) Upload(
 
 		// Prefer PDF title when present.
 		if pdfMetadata.Title != "" {
-			doc.Title = pdfMetadata.Title
+			target.Title = pdfMetadata.Title
 		}
 		// Author from PDF metadata.
 		if pdfMetadata.Author != "" {
 			a := pdfMetadata.Author
-			doc.Author = &a
-			doc.Metadata.OriginalAuthor = pdfMetadata.Author
+			target.Author = &a
+			target.Metadata.OriginalAuthor = pdfMetadata.Author
 		}
-		doc.Metadata.PageCount = pdfMetadata.PageCount
-		doc.Metadata.HasPassword = pdfMetadata.HasPassword
+		target.Metadata.PageCount = pdfMetadata.PageCount
+		target.Metadata.HasPassword = pdfMetadata.HasPassword
 
 		// Optimized checksums/sizes
 		optSize := int64(len(optimizedJSON))
 		optSum := sha256.Sum256([]byte(optimizedJSON))
 		optChecksum := hex.EncodeToString(optSum[:])
-		doc.OptimizedContent = optimizedJSON
-		doc.OptimizedSizeBytes = &optSize
-		doc.OptimizedChecksumSHA256 = &optChecksum
+		target.OptimizedContent = optimizedJSON
+		target.OptimizedSizeBytes = &optSize
+		target.OptimizedChecksumSHA256 = &optChecksum
 
-		doc.Content = contentJSON
+		target.Content = contentJSON
 		processedAt := time.Now().UTC()
-		doc.ProcessedAt = &processedAt
-		doc.ProcessingStatus = "ready"
-		doc.ProcessingError = nil
-		doc.UpdatedAt = processedAt
+		target.ProcessedAt = &processedAt
+		target.ProcessingStatus = "ready"
+		target.ProcessingError = nil
+		target.UpdatedAt = processedAt
 
-		if err := s.repo.Update(doc, token); err != nil {
+		if err := s.repo.Update(target, token); err != nil {
 			s.logger.Error("Failed to update document with processed content", err, "doc_id", docID)
 			return
 		}
@@ -369,11 +369,14 @@ func (s *DocumentService) Upload(
 	}
 
 	if totalSize < asyncThreshold {
-		processAndUpdate()
+		processAndUpdate(doc)
 		return doc, nil
 	}
 
-	go processAndUpdate()
+	// IMPORTANT: avoid mutating the response object after returning.
+	// Create an independent copy for background processing.
+	backgroundDoc := *doc
+	go processAndUpdate(&backgroundDoc)
 	s.logger.Info("Document created; processing in background", "doc_id", docID, "file_size", totalSize)
 	return doc, nil
 }
