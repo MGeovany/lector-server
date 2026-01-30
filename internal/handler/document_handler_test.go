@@ -42,6 +42,23 @@ func (m *MockDocumentService) GetDocument(documentID string, token string) (*dom
 	return nil, domain.ErrDocumentNotFound
 }
 
+func (m *MockDocumentService) GetOptimizedDocument(documentID string, token string) (*domain.OptimizedDocument, error) {
+	if doc, exists := m.documents[documentID]; exists {
+		_ = doc
+		return &domain.OptimizedDocument{
+			DocumentID:       documentID,
+			ProcessingStatus: "ready",
+			OptimizedVersion: 1,
+			Pages:            []string{"page 1"},
+		}, nil
+	}
+	return nil, domain.ErrDocumentNotFound
+}
+
+func (m *MockDocumentService) GetOptimizedDocumentMeta(documentID string, token string) (*domain.OptimizedDocument, error) {
+	return m.GetOptimizedDocument(documentID, token)
+}
+
 func (m *MockDocumentService) DeleteDocument(documentID string, token string) error {
 	if _, exists := m.documents[documentID]; !exists {
 		return domain.ErrDocumentNotFound
