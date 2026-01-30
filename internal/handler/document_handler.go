@@ -386,6 +386,7 @@ func (h *DocumentHandler) GetOptimizedDocument(w http.ResponseWriter, r *http.Re
 			includePages = false
 		}
 	}
+	h.logger.Info("GetOptimizedDocument request", "document_id", documentID, "include_pages", includePages)
 
 	var opt *domain.OptimizedDocument
 	var err error
@@ -395,9 +396,25 @@ func (h *DocumentHandler) GetOptimizedDocument(w http.ResponseWriter, r *http.Re
 		opt, err = h.documentService.GetOptimizedDocumentMeta(documentID, token)
 	}
 	if err != nil {
+		h.logger.Error("GetOptimizedDocument failed", err, "document_id", documentID)
 		h.writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	pageCount := 0
+	readyCount := 0
+	if opt.Pages != nil {
+		pageCount = len(opt.Pages)
+		for _, p := range opt.Pages {
+			if strings.TrimSpace(p) != "" {
+				readyCount++
+			}
+		}
+	}
+	optSize := int64(0)
+	if opt.OptimizedSizeBytes != nil {
+		optSize = *opt.OptimizedSizeBytes
+	}
+	h.logger.Info("GetOptimizedDocument response", "document_id", documentID, "processing_status", opt.ProcessingStatus, "pages_ready", readyCount, "pages_total", pageCount, "optimized_size_bytes", optSize)
 	if opt.UserID != "" && opt.UserID != user.ID {
 		h.writeError(w, http.StatusForbidden, "Access denied")
 		return
@@ -409,14 +426,22 @@ func (h *DocumentHandler) GetOptimizedDocument(w http.ResponseWriter, r *http.Re
 		w.Header().Set("ETag", etag)
 		if inm := strings.TrimSpace(r.Header.Get("If-None-Match")); inm != "" {
 			if inm == etag || strings.Trim(inm, "\"") == *opt.OptimizedChecksumSHA {
+				h.logger.Info("GetOptimizedDocument 304 not modified", "document_id", documentID)
 				w.WriteHeader(http.StatusNotModified)
 				return
 			}
 		}
 	}
 
-	// Not ready yet.
+	// If we already have some pages, return them even while processing.
 	if opt.ProcessingStatus != "ready" {
+		hasPages := includePages && len(opt.Pages) > 0
+		if hasPages {
+			h.logger.Info("GetOptimizedDocument 200 partial", "document_id", documentID, "status", opt.ProcessingStatus)
+			h.writeJSON(w, http.StatusOK, opt)
+			return
+		}
+		h.logger.Info("GetOptimizedDocument 202 not ready", "document_id", documentID, "status", opt.ProcessingStatus)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
 		h.writeJSON(w, http.StatusAccepted, opt)
@@ -429,6 +454,7 @@ func (h *DocumentHandler) GetOptimizedDocument(w http.ResponseWriter, r *http.Re
 		opt.ProcessedAt = &now
 	}
 
+	h.logger.Info("GetOptimizedDocument 200 ready", "document_id", documentID, "pages_total", pageCount)
 	h.writeJSON(w, http.StatusOK, opt)
 }
 

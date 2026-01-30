@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"pdf-text-reader/internal/domain"
 
@@ -42,8 +43,28 @@ type PDFMetadata struct {
 	Title       string `json:"title"`
 }
 
-// ProcessPDF extracts text and metadata from a PDF file
+// ProcessPDF extracts text and metadata from a PDF file.
+// Use ProcessPDFWithCallbacks to receive per-page text as it's extracted.
 func (p *PDFProcessor) ProcessPDF(pdfBytes []byte) ([]TextBlock, PDFMetadata, error) {
+	return p.ProcessPDFWithCallbacks(pdfBytes, nil, nil)
+}
+
+// ProcessPDFWithPageCallback is a convenience wrapper.
+func (p *PDFProcessor) ProcessPDFWithPageCallback(
+	pdfBytes []byte,
+	onPage func(pageNumber int, pageText string),
+) ([]TextBlock, PDFMetadata, error) {
+	return p.ProcessPDFWithCallbacks(pdfBytes, nil, onPage)
+}
+
+// ProcessPDFWithCallbacks extracts text and metadata and calls callbacks during extraction.
+// - onMeta: called once after metadata is available (page_count, author, title)
+// - onPage: called after each page (1-indexed)
+func (p *PDFProcessor) ProcessPDFWithCallbacks(
+	pdfBytes []byte,
+	onMeta func(meta PDFMetadata),
+	onPage func(pageNumber int, pageText string),
+) ([]TextBlock, PDFMetadata, error) {
 	// Open PDF document from bytes
 	doc, err := fitz.NewFromMemory(pdfBytes)
 	if err != nil {
@@ -66,14 +87,50 @@ func (p *PDFProcessor) ProcessPDF(pdfBytes []byte) ([]TextBlock, PDFMetadata, er
 		metadata.Author = author
 	}
 
+	if onMeta != nil {
+		onMeta(metadata)
+	}
+
 	var blocks []TextBlock
+	numPages := doc.NumPage()
+	const pageTimeout = 90 * time.Second
+
+	type pageResult struct {
+		text string
+		err  error
+	}
 
 	// Process each page
-	for pageNum := 0; pageNum < doc.NumPage(); pageNum++ {
-		// Extract text from page
-		text, err := doc.Text(pageNum)
+	for pageNum := 0; pageNum < numPages; pageNum++ {
+		p.logger.Debug("PDF processing page", "page", pageNum+1, "total", numPages)
+		resultCh := make(chan pageResult, 1)
+		go func(idx int) {
+			t, e := doc.Text(idx)
+			resultCh <- pageResult{text: t, err: e}
+		}(pageNum)
+		var text string
+		var err error
+		select {
+		case res := <-resultCh:
+			text, err = res.text, res.err
+		case <-time.After(pageTimeout):
+			p.logger.Warn("PDF page extraction timeout; using empty page", "page", pageNum+1, "total", numPages, "timeout_sec", int(pageTimeout.Seconds()))
+			text = ""
+			err = fmt.Errorf("timeout after %v", pageTimeout)
+			go func() { <-resultCh }() // drain so goroutine can exit
+		}
 		if err != nil {
-			p.logger.Warn("Failed to extract text from page", "page_num", pageNum, "error", err)
+			p.logger.Warn("Failed to extract text from page", "page_num", pageNum+1, "total", numPages, "error", err)
+			if onPage != nil {
+				onPage(pageNum+1, "")
+			}
+			blocks = append(blocks, TextBlock{
+				Type:       "paragraph",
+				Content:    "",
+				Level:      0,
+				PageNumber: pageNum + 1,
+				Position:   0,
+			})
 			continue
 		}
 
@@ -88,12 +145,17 @@ func (p *PDFProcessor) ProcessPDF(pdfBytes []byte) ([]TextBlock, PDFMetadata, er
 				PageNumber: pageNum + 1, // 1-indexed for frontend
 				Position:   0,
 			})
+			if onPage != nil {
+				onPage(pageNum+1, "")
+			}
 			continue
 		}
 
 		// Split text into paragraphs and process
 		paragraphs := p.splitIntoParagraphs(text)
 		positionCounter := 0 // Reset position counter for each page
+		var pageOut []string
+		pageOut = make([]string, 0, len(paragraphs))
 
 		for _, para := range paragraphs {
 			para = strings.TrimSpace(para)
@@ -112,6 +174,7 @@ func (p *PDFProcessor) ProcessPDF(pdfBytes []byte) ([]TextBlock, PDFMetadata, er
 			// Sanitize content to remove problematic Unicode sequences
 			// Replace control characters and normalize Unicode
 			sanitizedContent := p.sanitizeText(para)
+			pageOut = append(pageOut, sanitizedContent)
 
 			blocks = append(blocks, TextBlock{
 				Type:       blockType,
@@ -121,6 +184,10 @@ func (p *PDFProcessor) ProcessPDF(pdfBytes []byte) ([]TextBlock, PDFMetadata, er
 				Position:   positionCounter,
 			})
 			positionCounter++
+		}
+
+		if onPage != nil {
+			onPage(pageNum+1, strings.TrimSpace(strings.Join(pageOut, "\n\n")))
 		}
 	}
 

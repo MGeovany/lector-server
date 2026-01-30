@@ -303,7 +303,48 @@ func (s *DocumentService) Upload(
 	}
 
 	processAndUpdate := func(target *domain.DocumentData) {
-		blocks, pdfMetadata, err := s.pdfProcessor.ProcessPDF(fileBytes)
+		// Build an initial placeholder optimized array so the client can open quickly.
+		// We'll fill pages as we process them and write intermediate updates.
+		var optimizedPages []string
+		lastIntermediateUpdatePage := 0
+
+		blocks, pdfMetadata, err := s.pdfProcessor.ProcessPDFWithCallbacks(
+			fileBytes,
+			func(meta PDFMetadata) {
+				// Pre-size so partial payload keeps correct total page count.
+				if meta.PageCount > 0 {
+					optimizedPages = make([]string, meta.PageCount)
+					target.Metadata.PageCount = meta.PageCount
+				}
+			},
+			func(pageNumber int, pageText string) {
+				if optimizedPages == nil {
+					optimizedPages = make([]string, 0)
+				}
+				idx := pageNumber - 1
+				for len(optimizedPages) <= idx {
+					optimizedPages = append(optimizedPages, "")
+				}
+				optimizedPages[idx] = pageText
+
+				// Throttle intermediate DB writes.
+				if pageNumber == 1 || pageNumber-lastIntermediateUpdatePage >= 12 {
+					lastIntermediateUpdatePage = pageNumber
+					if b, err := json.Marshal(optimizedPages); err == nil {
+						// Update just the optimized content + status; keep content empty until the end.
+						target.OptimizedContent = json.RawMessage(b)
+						size := int64(len(b))
+						sum := sha256.Sum256(b)
+						checksum := hex.EncodeToString(sum[:])
+						target.OptimizedSizeBytes = &size
+						target.OptimizedChecksumSHA256 = &checksum
+						target.ProcessingStatus = "processing"
+						target.UpdatedAt = time.Now().UTC()
+						_ = s.repo.Update(target, token)
+					}
+				}
+			},
+		)
 		if err != nil {
 			s.logger.Error("Failed to process PDF", err, "doc_id", docID)
 			msg := err.Error()
@@ -314,6 +355,17 @@ func (s *DocumentService) Upload(
 				s.logger.Error("Failed to update document after processing failure", err, "doc_id", docID)
 			}
 			return
+		}
+
+		// Ensure optimizedPages length matches the PDF page count.
+		if pdfMetadata.PageCount > 0 {
+			if optimizedPages == nil {
+				optimizedPages = make([]string, pdfMetadata.PageCount)
+			} else if len(optimizedPages) < pdfMetadata.PageCount {
+				for len(optimizedPages) < pdfMetadata.PageCount {
+					optimizedPages = append(optimizedPages, "")
+				}
+			}
 		}
 
 		contentJSON, err := s.pdfProcessor.ConvertToJSON(blocks)
