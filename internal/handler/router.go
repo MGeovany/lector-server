@@ -53,9 +53,6 @@ func NewRouter(
 	// Get doc data by ID
 	protected.HandleFunc("/documents/{id}", documentHandler.GetDocument).Methods(http.MethodGet)
 
-	// Get lightweight optimized pages by ID (offline-first)
-	protected.HandleFunc("/documents/{id}/optimized", documentHandler.GetOptimizedDocument).Methods(http.MethodGet)
-
 	// Update doc by ID
 	protected.HandleFunc("/documents/{id}", documentHandler.UpdateDocument).Methods(http.MethodPut)
 

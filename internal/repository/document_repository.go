@@ -138,15 +138,6 @@ func (r *DocumentRepository) Create(
 		}
 	}
 
-	// Optional optimized_content (JSONB)
-	var optimizedData interface{}
-	if len(document.OptimizedContent) > 0 {
-		if err := json.Unmarshal(document.OptimizedContent, &optimizedData); err != nil {
-			r.logger.Warn("Failed to unmarshal optimized_content JSON for insert", "error", err)
-			optimizedData = nil
-		}
-	}
-
 	// Final validation: serialize the entire data structure to JSON, clean it, and re-parse
 	// This ensures that the client won't introduce problematic Unicode sequences
 	tempData := map[string]interface{}{
@@ -165,47 +156,6 @@ func (r *DocumentRepository) Create(
 	}
 	if document.Description != nil {
 		tempData["description"] = *document.Description
-	}
-
-	// Offline-first columns
-	if document.OriginalStoragePath != nil {
-		tempData["original_storage_path"] = *document.OriginalStoragePath
-	}
-	if document.OriginalFileName != nil {
-		tempData["original_file_name"] = *document.OriginalFileName
-	}
-	if document.OriginalMimeType != nil {
-		tempData["original_mime_type"] = *document.OriginalMimeType
-	}
-	if document.OriginalSizeBytes != nil {
-		tempData["original_size_bytes"] = *document.OriginalSizeBytes
-	}
-	if document.OriginalChecksumSHA256 != nil {
-		tempData["original_checksum_sha256"] = *document.OriginalChecksumSHA256
-	}
-	if optimizedData != nil {
-		tempData["optimized_content"] = optimizedData
-	}
-	if document.OptimizedVersion > 0 {
-		tempData["optimized_version"] = document.OptimizedVersion
-	}
-	if document.OptimizedSizeBytes != nil {
-		tempData["optimized_size_bytes"] = *document.OptimizedSizeBytes
-	}
-	if document.OptimizedChecksumSHA256 != nil {
-		tempData["optimized_checksum_sha256"] = *document.OptimizedChecksumSHA256
-	}
-	if document.ProcessingStatus != "" {
-		tempData["processing_status"] = document.ProcessingStatus
-	}
-	if document.ProcessingError != nil {
-		tempData["processing_error"] = *document.ProcessingError
-	}
-	if document.LanguageCode != nil {
-		tempData["language_code"] = *document.LanguageCode
-	}
-	if document.ProcessedAt != nil {
-		tempData["processed_at"] = *document.ProcessedAt
 	}
 
 	// Serialize to JSON to check for problematic sequences
@@ -370,143 +320,6 @@ func (r *DocumentRepository) GetByID(id string, token string) (*domain.Document,
 	return r.mapToDocument(docData)
 }
 
-// GetOptimizedByID retrieves the lightweight optimized pages payload for a document.
-func (r *DocumentRepository) GetOptimizedByID(id string, token string) (*domain.OptimizedDocument, error) {
-	client, err := r.supabaseClient.GetClientWithToken(token)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get client with token: %w", err)
-	}
-	if client == nil {
-		return nil, fmt.Errorf("supabase client not initialized")
-	}
-
-	data, _, err := client.From("documents").
-		Select("id,processing_status,optimized_content,optimized_version,optimized_checksum_sha256,optimized_size_bytes,language_code,processed_at,user_id", "", false).
-		Eq("id", id).
-		Limit(1, "").
-		Execute()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get optimized document: %w", err)
-	}
-
-	var rows []map[string]interface{}
-	if err := json.Unmarshal(data, &rows); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
-	}
-	if len(rows) == 0 {
-		return nil, fmt.Errorf("document not found")
-	}
-
-	row := rows[0]
-
-	out := &domain.OptimizedDocument{
-		DocumentID:       getString(row, "id"),
-		UserID:           getString(row, "user_id"),
-		ProcessingStatus: getString(row, "processing_status"),
-		OptimizedVersion: getInt(row, "optimized_version"),
-	}
-	if out.ProcessingStatus == "" {
-		out.ProcessingStatus = "ready"
-	}
-	if out.OptimizedVersion <= 0 {
-		out.OptimizedVersion = 1
-	}
-	if v := getString(row, "optimized_checksum_sha256"); v != "" {
-		out.OptimizedChecksumSHA = &v
-	}
-	if v := getInt64(row, "optimized_size_bytes"); v > 0 {
-		out.OptimizedSizeBytes = &v
-	}
-	if v := getString(row, "language_code"); v != "" {
-		out.LanguageCode = &v
-	}
-	if processedAt := getString(row, "processed_at"); processedAt != "" {
-		if t, err := time.Parse(time.RFC3339, processedAt); err == nil {
-			out.ProcessedAt = &t
-		} else if t, err := time.Parse(time.RFC3339Nano, processedAt); err == nil {
-			out.ProcessedAt = &t
-		}
-	}
-
-	// Decode optimized_content into []string (it may arrive as string or []any).
-	if val, ok := row["optimized_content"]; ok && val != nil {
-		var pages []string
-		switch v := val.(type) {
-		case string:
-			_ = json.Unmarshal([]byte(v), &pages)
-		default:
-			b, err := json.Marshal(v)
-			if err == nil {
-				_ = json.Unmarshal(b, &pages)
-			}
-		}
-		if pages != nil {
-			out.Pages = pages
-		}
-	}
-
-	return out, nil
-}
-
-// GetOptimizedMetaByID retrieves optimized metadata without the pages payload.
-func (r *DocumentRepository) GetOptimizedMetaByID(id string, token string) (*domain.OptimizedDocument, error) {
-	client, err := r.supabaseClient.GetClientWithToken(token)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get client with token: %w", err)
-	}
-	if client == nil {
-		return nil, fmt.Errorf("supabase client not initialized")
-	}
-
-	data, _, err := client.From("documents").
-		Select("id,processing_status,optimized_version,optimized_checksum_sha256,optimized_size_bytes,language_code,processed_at,user_id", "", false).
-		Eq("id", id).
-		Limit(1, "").
-		Execute()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get optimized document meta: %w", err)
-	}
-
-	var rows []map[string]interface{}
-	if err := json.Unmarshal(data, &rows); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
-	}
-	if len(rows) == 0 {
-		return nil, fmt.Errorf("document not found")
-	}
-
-	row := rows[0]
-	out := &domain.OptimizedDocument{
-		DocumentID:       getString(row, "id"),
-		UserID:           getString(row, "user_id"),
-		ProcessingStatus: getString(row, "processing_status"),
-		OptimizedVersion: getInt(row, "optimized_version"),
-	}
-	if out.ProcessingStatus == "" {
-		out.ProcessingStatus = "ready"
-	}
-	if out.OptimizedVersion <= 0 {
-		out.OptimizedVersion = 1
-	}
-	if v := getString(row, "optimized_checksum_sha256"); v != "" {
-		out.OptimizedChecksumSHA = &v
-	}
-	if v := getInt64(row, "optimized_size_bytes"); v > 0 {
-		out.OptimizedSizeBytes = &v
-	}
-	if v := getString(row, "language_code"); v != "" {
-		out.LanguageCode = &v
-	}
-	if processedAt := getString(row, "processed_at"); processedAt != "" {
-		if t, err := time.Parse(time.RFC3339, processedAt); err == nil {
-			out.ProcessedAt = &t
-		} else if t, err := time.Parse(time.RFC3339Nano, processedAt); err == nil {
-			out.ProcessedAt = &t
-		}
-	}
-	return out, nil
-}
-
 // GetByUserID retrieves all documents for a user
 func (r *DocumentRepository) GetByUserID(userID string, token string) ([]*domain.Document, error) {
 	client, err := r.supabaseClient.GetClientWithToken(token)
@@ -520,7 +333,7 @@ func (r *DocumentRepository) GetByUserID(userID string, token string) ([]*domain
 	// Select all fields except content to reduce payload size when listing documents
 	// Content is only needed when opening a specific document for reading
 	data, _, err := client.From("documents").
-		Select("id,user_id,title,author,description,metadata,created_at,updated_at,processing_status,processed_at,optimized_version,optimized_size_bytes,optimized_checksum_sha256,language_code,original_size_bytes", "", false).
+		Select("id,user_id,title,author,description,metadata,created_at,updated_at", "", false).
 		Eq("user_id", userID).
 		Execute()
 	if err != nil {
@@ -730,54 +543,6 @@ func (r *DocumentRepository) Update(document *domain.Document, token string) err
 		"updated_at": document.UpdatedAt,
 	}
 
-	// Optional optimized_content (JSONB)
-	if len(document.OptimizedContent) > 0 {
-		var optimizedData interface{}
-		if err := json.Unmarshal(document.OptimizedContent, &optimizedData); err != nil {
-			r.logger.Warn("Failed to unmarshal optimized_content JSON in update", "error", err)
-		} else {
-			data["optimized_content"] = optimizedData
-		}
-	}
-	if document.OptimizedVersion > 0 {
-		data["optimized_version"] = document.OptimizedVersion
-	}
-	if document.OptimizedSizeBytes != nil {
-		data["optimized_size_bytes"] = *document.OptimizedSizeBytes
-	}
-	if document.OptimizedChecksumSHA256 != nil {
-		data["optimized_checksum_sha256"] = *document.OptimizedChecksumSHA256
-	}
-	if document.ProcessingStatus != "" {
-		data["processing_status"] = document.ProcessingStatus
-	}
-	if document.ProcessingError != nil {
-		data["processing_error"] = *document.ProcessingError
-	}
-	if document.LanguageCode != nil {
-		data["language_code"] = *document.LanguageCode
-	}
-	if document.ProcessedAt != nil {
-		data["processed_at"] = *document.ProcessedAt
-	}
-
-	// Original file columns (set when provided)
-	if document.OriginalStoragePath != nil {
-		data["original_storage_path"] = *document.OriginalStoragePath
-	}
-	if document.OriginalFileName != nil {
-		data["original_file_name"] = *document.OriginalFileName
-	}
-	if document.OriginalMimeType != nil {
-		data["original_mime_type"] = *document.OriginalMimeType
-	}
-	if document.OriginalSizeBytes != nil {
-		data["original_size_bytes"] = *document.OriginalSizeBytes
-	}
-	if document.OriginalChecksumSHA256 != nil {
-		data["original_checksum_sha256"] = *document.OriginalChecksumSHA256
-	}
-
 	// Add optional fields if they exist
 	if document.Author != nil {
 		data["author"] = *document.Author
@@ -950,51 +715,6 @@ func (r *DocumentRepository) mapToDocument(data map[string]interface{}) (*domain
 		Title:       getString(data, "title"),
 		Author:      getStringPointer(data, "author"),
 		Description: getStringPointer(data, "description"),
-	}
-
-	// Offline-first columns (optional)
-	document.OriginalStoragePath = getStringPointer(data, "original_storage_path")
-	document.OriginalFileName = getStringPointer(data, "original_file_name")
-	document.OriginalMimeType = getStringPointer(data, "original_mime_type")
-	if v := getInt64(data, "original_size_bytes"); v > 0 {
-		document.OriginalSizeBytes = &v
-	}
-	document.OriginalChecksumSHA256 = getStringPointer(data, "original_checksum_sha256")
-
-	if val, ok := data["optimized_content"]; ok && val != nil {
-		if s, ok := val.(string); ok {
-			document.OptimizedContent = json.RawMessage(s)
-		} else {
-			b, err := json.Marshal(val)
-			if err != nil {
-				return nil, fmt.Errorf("failed to marshal optimized_content: %w", err)
-			}
-			document.OptimizedContent = json.RawMessage(b)
-		}
-	}
-
-	// Defaults for existing rows
-	document.OptimizedVersion = getInt(data, "optimized_version")
-	if document.OptimizedVersion <= 0 {
-		document.OptimizedVersion = 1
-	}
-	if v := getInt64(data, "optimized_size_bytes"); v > 0 {
-		document.OptimizedSizeBytes = &v
-	}
-	document.OptimizedChecksumSHA256 = getStringPointer(data, "optimized_checksum_sha256")
-
-	document.ProcessingStatus = getString(data, "processing_status")
-	if document.ProcessingStatus == "" {
-		document.ProcessingStatus = "ready"
-	}
-	document.ProcessingError = getStringPointer(data, "processing_error")
-	document.LanguageCode = getStringPointer(data, "language_code")
-	if processedAt := getString(data, "processed_at"); processedAt != "" {
-		if t, err := time.Parse(time.RFC3339, processedAt); err == nil {
-			document.ProcessedAt = &t
-		} else if t, err := time.Parse(time.RFC3339Nano, processedAt); err == nil {
-			document.ProcessedAt = &t
-		}
 	}
 
 	// Favorites (optional field in list endpoints)

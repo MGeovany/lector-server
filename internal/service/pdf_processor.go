@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"regexp"
-	"sort"
 	"strings"
 
 	"pdf-text-reader/internal/domain"
@@ -335,94 +334,4 @@ func (p *PDFProcessor) ConvertToJSON(blocks []TextBlock) (json.RawMessage, error
 	finalJSONStr = strings.ReplaceAll(finalJSONStr, "\x00", "")
 
 	return json.RawMessage(finalJSONStr), nil
-}
-
-// ConvertToOptimizedPagesJSON returns a lightweight JSON array of page strings.
-// This is meant for offline-first clients that want a minimal representation.
-func (p *PDFProcessor) ConvertToOptimizedPagesJSON(blocks []TextBlock, pageCount int) (json.RawMessage, error) {
-	if pageCount < 0 {
-		pageCount = 0
-	}
-
-	// Ensure deterministic order.
-	sort.Slice(blocks, func(i, j int) bool {
-		if blocks[i].PageNumber != blocks[j].PageNumber {
-			return blocks[i].PageNumber < blocks[j].PageNumber
-		}
-		return blocks[i].Position < blocks[j].Position
-	})
-
-	pages := make([]string, pageCount)
-	var currentPage int = -1
-	var sb strings.Builder
-
-	flush := func() {
-		if currentPage >= 0 && currentPage < pageCount {
-			pages[currentPage] = strings.TrimSpace(sb.String())
-		}
-		sb.Reset()
-	}
-
-	for _, b := range blocks {
-		pn := b.PageNumber - 1 // incoming is 1-indexed
-		if pn < 0 {
-			continue
-		}
-		if pn >= pageCount {
-			// Grow if metadata pageCount is missing/wrong.
-			newCount := pn + 1
-			for len(pages) < newCount {
-				pages = append(pages, "")
-			}
-			pageCount = newCount
-		}
-		if pn != currentPage {
-			flush()
-			currentPage = pn
-		}
-
-		text := strings.TrimSpace(b.Content)
-		if text == "" {
-			continue
-		}
-		if sb.Len() > 0 {
-			sb.WriteString("\n\n")
-		}
-		// Minimal formatting: headings get a little spacing; paragraphs unchanged.
-		sb.WriteString(text)
-	}
-	flush()
-
-	jsonBytes, err := json.Marshal(pages)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal optimized pages: %w", err)
-	}
-
-	// Reuse the same PostgreSQL-safe cleaning as ConvertToJSON.
-	jsonStr := string(jsonBytes)
-	reControlChars := regexp.MustCompile(`\\u00[0-1][0-9a-fA-F]`)
-	jsonStr = reControlChars.ReplaceAllString(jsonStr, "")
-	reSurrogates := regexp.MustCompile(`\\u[dD][89aAbBcCdDeEfF][0-9a-fA-F]{2}`)
-	jsonStr = reSurrogates.ReplaceAllString(jsonStr, "")
-	jsonStr = strings.ReplaceAll(jsonStr, "\x00", "")
-	jsonStr = strings.ReplaceAll(jsonStr, "\\u0000", "")
-	jsonStr = strings.ReplaceAll(jsonStr, "\\u000", "")
-
-	// Validate.
-	var verify []string
-	if err := json.Unmarshal([]byte(jsonStr), &verify); err != nil {
-		p.logger.Warn("Failed to verify optimized pages JSON", "error", err)
-		return json.RawMessage("[]"), nil
-	}
-
-	cleaned, err := json.Marshal(verify)
-	if err != nil {
-		return json.RawMessage(jsonStr), nil
-	}
-	finalStr := string(cleaned)
-	finalStr = reControlChars.ReplaceAllString(finalStr, "")
-	finalStr = reSurrogates.ReplaceAllString(finalStr, "")
-	finalStr = strings.ReplaceAll(finalStr, "\x00", "")
-
-	return json.RawMessage(finalStr), nil
 }

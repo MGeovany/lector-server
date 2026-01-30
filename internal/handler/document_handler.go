@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
-	"time"
 
 	"pdf-text-reader/internal/domain"
 
@@ -354,82 +353,6 @@ func (h *DocumentHandler) GetDocument(w http.ResponseWriter, r *http.Request) {
 	// Clean the document content before returning
 	cleanDoc := h.cleanDocumentForResponse(document)
 	h.writeJSON(w, http.StatusOK, cleanDoc)
-}
-
-// GetOptimizedDocument returns the lightweight page array used by offline-first clients.
-// - 200: processing_status=ready + pages
-// - 202: not ready yet
-// - 304: If-None-Match matches optimized checksum
-func (h *DocumentHandler) GetOptimizedDocument(w http.ResponseWriter, r *http.Request) {
-	user, ok := GetUserFromContext(r)
-	if !ok {
-		h.writeError(w, http.StatusUnauthorized, "User not found in context")
-		return
-	}
-
-	vars := mux.Vars(r)
-	documentID := vars["id"]
-	if documentID == "" {
-		h.writeError(w, http.StatusBadRequest, "Document ID is required")
-		return
-	}
-
-	token, ok := GetTokenFromContext(r)
-	if !ok {
-		h.writeError(w, http.StatusUnauthorized, "Token not found in context")
-		return
-	}
-
-	includePages := true
-	if raw := strings.TrimSpace(r.URL.Query().Get("include_pages")); raw != "" {
-		if raw == "0" || strings.EqualFold(raw, "false") {
-			includePages = false
-		}
-	}
-
-	var opt *domain.OptimizedDocument
-	var err error
-	if includePages {
-		opt, err = h.documentService.GetOptimizedDocument(documentID, token)
-	} else {
-		opt, err = h.documentService.GetOptimizedDocumentMeta(documentID, token)
-	}
-	if err != nil {
-		h.writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if opt.UserID != "" && opt.UserID != user.ID {
-		h.writeError(w, http.StatusForbidden, "Access denied")
-		return
-	}
-
-	// ETag support.
-	if opt.OptimizedChecksumSHA != nil && *opt.OptimizedChecksumSHA != "" {
-		etag := "\"" + *opt.OptimizedChecksumSHA + "\""
-		w.Header().Set("ETag", etag)
-		if inm := strings.TrimSpace(r.Header.Get("If-None-Match")); inm != "" {
-			if inm == etag || strings.Trim(inm, "\"") == *opt.OptimizedChecksumSHA {
-				w.WriteHeader(http.StatusNotModified)
-				return
-			}
-		}
-	}
-
-	// Not ready yet.
-	if opt.ProcessingStatus != "ready" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusAccepted)
-		h.writeJSON(w, http.StatusAccepted, opt)
-		return
-	}
-
-	// Ensure processed_at is set in response when missing (best-effort).
-	if opt.ProcessedAt == nil {
-		now := time.Now().UTC()
-		opt.ProcessedAt = &now
-	}
-
-	h.writeJSON(w, http.StatusOK, opt)
 }
 
 type updateDocumentRequest struct {
