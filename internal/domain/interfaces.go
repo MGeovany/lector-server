@@ -16,4 +16,6 @@ type Config interface {
 	GetSupabaseURL() string
 	GetSupabaseKey() string
 	GetJWTSecret() string
+	GetGCPProjectID() string
+	GetGCPLocation() string
 }

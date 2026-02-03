@@ -18,6 +18,7 @@ type Container struct {
 	StorageService         domain.StorageService
 	UserPreferencesService domain.UserPreferencesService
 	HighlightService       domain.HighlightService
+	AIService              domain.AIService
 }
 
 // NewContainer creates a new dependency injection container
@@ -44,6 +45,12 @@ func NewContainer() *Container {
 	)
 
 	highlightRepo := repository.NewHighlightRepository(
+		supabaseClient,
+		log,
+	)
+
+	// AI Repository (implements Vector, Chat, Usage)
+	aiRepo := repository.NewAIRepository(
 		supabaseClient,
 		log,
 	)
@@ -77,6 +84,28 @@ func NewContainer() *Container {
 		log,
 	)
 
+	aiService, err := service.NewAIService(
+		aiRepo, // VectorRepository
+		aiRepo, // ChatRepository
+		documentRepo,
+		aiRepo, // UsageRepository
+		log,
+		cfg.GetGCPProjectID(),
+		cfg.GetGCPLocation(),
+	)
+	if err != nil {
+		log.Warn("Failed to initialize AI service", "error", err)
+		// Don't panic, just continue without AI? Or panic? User requested feature so maybe panic.
+		// But usually better to run partial.
+	}
+
+	var aiServiceInt domain.AIService
+	// Note: We use a separate variable to ensure we don't assign a nil *service.AIService pointer
+	// to the interface, which would result in a non-nil interface (typed nil) causing panics.
+	if err == nil {
+		aiServiceInt = aiService
+	}
+
 	return &Container{
 		Config:                 cfg,
 		Logger:                 log,
@@ -86,5 +115,6 @@ func NewContainer() *Container {
 		StorageService:         storageService,
 		UserPreferencesService: userPreferencesService,
 		HighlightService:       highlightService,
+		AIService:              aiServiceInt,
 	}
 }

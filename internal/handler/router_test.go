@@ -32,7 +32,7 @@ func TestNewRouter_Health(t *testing.T) {
 	preferenceHandler := NewPreferenceHandler(&config.Container{UserPreferencesService: prefService}, logger)
 	highlightHandler := NewHighlightHandler(&config.Container{HighlightService: highlightService}, logger)
 
-	router := NewRouter(authHandler, adminHandler, documentHandler, preferenceHandler, highlightHandler, func(next http.Handler) http.Handler { return next })
+	router := NewRouter(authHandler, adminHandler, documentHandler, preferenceHandler, highlightHandler, nil, func(next http.Handler) http.Handler { return next })
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	rr := httptest.NewRecorder()

@@ -61,6 +61,16 @@ func (c *AppConfig) GetJWTSecret() string {
 	return c.JWTSecret
 }
 
+// GetGCPProjectID returns the Google Cloud Project ID
+func (c *AppConfig) GetGCPProjectID() string {
+	return getEnvOrDefault("GCP_PROJECT_ID", getEnvOrDefault("GOOGLE_CLOUD_PROJECT", ""))
+}
+
+// GetGCPLocation returns the Google Cloud Region (e.g. us-central1)
+func (c *AppConfig) GetGCPLocation() string {
+	return getEnvOrDefault("GCP_LOCATION", "us-central1")
+}
+
 // Helper functions for environment variable handling
 func getEnvOrDefault(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {

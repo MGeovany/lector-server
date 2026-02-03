@@ -1,0 +1,6 @@
+{
+    "version": "0.2",
+    "language": "en,es",
+    "words": [],
+    "ignorePaths": ["node_modules", "*.lock", "go.sum", "vendor"]
+}
