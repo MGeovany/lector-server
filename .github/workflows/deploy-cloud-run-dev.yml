@@ -1,0 +1,65 @@
+# Deploy to Cloud Run **dev** (separate service from prod).
+# Trigger: push to branch `dev`.
+# Prod stays on `main` (deploy-cloud-run.yml).
+
+name: Deploy to Cloud Run (dev)
+
+on:
+  push:
+    branches: ["dev"]
+
+concurrency:
+  group: cloud-run-dev
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  GCP_PROJECT_ID: ${{ vars.GCP_GCP_PROJECT_ID }}
+  REGION: ${{ vars.GCP_REGION }}
+  REPO: ${{ vars.GCP_ARTIFACT_REPO }}
+  # Dev service name: same base as prod with -dev (e.g. reader-go -> reader-go-dev)
+  SERVICE: ${{ vars.CLOUD_RUN_SERVICE }}-dev
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          GCP_PROJECT_ID: ${{ env.GCP_PROJECT_ID }}
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build & push image
+        env:
+          IMAGE: ${{ env.REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.REPO }}/${{ env.SERVICE }}:${{ github.sha }}
+        run: |
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+
+      - name: Deploy to Cloud Run (dev)
+        env:
+          IMAGE: ${{ env.REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.REPO }}/${{ env.SERVICE }}:${{ github.sha }}
+        run: |
+          gcloud run deploy "${{ env.SERVICE }}" \
+            --image "$IMAGE" \
+            --region "${{ env.REGION }}" \
+            --platform managed \
+            --allow-unauthenticated \
+            --set-env-vars "SUPABASE_URL=${{ secrets.SUPABASE_URL }},SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }},JWT_SECRET=${{ secrets.JWT_SECRET }}" \
+            --quiet
