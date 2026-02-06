@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -51,7 +52,14 @@ func (h *AIHandler) Ingest(w http.ResponseWriter, r *http.Request) {
 	// Async potential? For now synchronous or return 202
 	if err := h.aiService.IngestDocument(r.Context(), user.ID, documentID, token); err != nil {
 		h.logger.Error("Ingestion failed", err, "doc_id", documentID)
-		writeError(w, http.StatusInternalServerError, "Failed to ingest document")
+		switch {
+		case errors.Is(err, domain.ErrPlanUpgradeRequired):
+			writeError(w, http.StatusForbidden, "Ask AI is available on Pro and Founder.")
+		case errors.Is(err, domain.ErrMonthlyTokenLimitHit):
+			writeError(w, http.StatusTooManyRequests, "Monthly Ask AI token limit reached. Try again next month.")
+		default:
+			writeError(w, http.StatusInternalServerError, "Failed to ingest document")
+		}
 		return
 	}
 
@@ -102,7 +110,16 @@ func (h *AIHandler) Ask(w http.ResponseWriter, r *http.Request) {
 	resp, err := h.aiService.Ask(r.Context(), user.ID, req, token)
 	if err != nil {
 		h.logger.Error("Ask AI failed", err, "user_id", user.ID)
-		writeError(w, http.StatusInternalServerError, "Failed to process query")
+		switch {
+		case errors.Is(err, domain.ErrPlanUpgradeRequired):
+			writeError(w, http.StatusForbidden, "Ask AI is available on Pro and Founder.")
+		case errors.Is(err, domain.ErrMonthlyTokenLimitHit):
+			writeError(w, http.StatusTooManyRequests, "Monthly Ask AI token limit reached. Try again next month.")
+		case errors.Is(err, domain.ErrAccessDenied):
+			writeError(w, http.StatusForbidden, "Access denied")
+		default:
+			writeError(w, http.StatusInternalServerError, "Failed to process query")
+		}
 		return
 	}
 

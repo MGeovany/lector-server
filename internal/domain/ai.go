@@ -54,8 +54,10 @@ type UsageLedger struct {
 	UserID       string    `json:"user_id"`
 	PeriodStart  time.Time `json:"period_start"`
 	PeriodEnd    time.Time `json:"period_end,omitempty"`
-	TokensIn     int       `json:"tokens_in"`
-	TokensOut    int       `json:"tokens_out"`
+	// Note: Supabase table uses `tokens_used_input` / `tokens_used_output`.
+	// Keep field names stable in Go, but match JSON keys so unmarshalling works.
+	TokensIn     int       `json:"tokens_used_input"`
+	TokensOut    int       `json:"tokens_used_output"`
 	RequestCount int       `json:"request_count"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`

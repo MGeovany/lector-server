@@ -89,6 +89,7 @@ func NewContainer() *Container {
 		aiRepo, // ChatRepository
 		documentRepo,
 		aiRepo, // UsageRepository
+		preferenceRepo,
 		log,
 		cfg.GetGCPProjectID(),
 		cfg.GetGCPLocation(),

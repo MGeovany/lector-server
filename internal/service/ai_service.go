@@ -23,6 +23,7 @@ type AIService struct {
 	chatRepo   domain.ChatRepository
 	docRepo    domain.DocumentRepository
 	usageRepo  domain.UsageRepository
+	prefsRepo  domain.UserPreferencesRepository
 	logger     domain.Logger
 
 	projectID string
@@ -36,6 +37,7 @@ func NewAIService(
 	chatRepo domain.ChatRepository,
 	docRepo domain.DocumentRepository,
 	usageRepo domain.UsageRepository,
+	prefsRepo domain.UserPreferencesRepository,
 	logger domain.Logger,
 	projectID string,
 	location string,
@@ -51,6 +53,7 @@ func NewAIService(
 		chatRepo:    chatRepo,
 		docRepo:     docRepo,
 		usageRepo:   usageRepo,
+		prefsRepo:   prefsRepo,
 		logger:      logger,
 		projectID:   projectID,
 		location:    location,
@@ -64,6 +67,10 @@ const (
 )
 
 func (s *AIService) IngestDocument(ctx context.Context, userID, documentID string, token string) error {
+	if err := s.ensureAskAIEntitled(ctx, userID, token); err != nil {
+		return err
+	}
+
 	optDoc, err := s.docRepo.GetOptimizedByID(documentID, token)
 	if err != nil {
 		return fmt.Errorf("failed to get optimized document: %w", err)
@@ -163,6 +170,11 @@ func (s *AIService) IngestDocument(ctx context.Context, userID, documentID strin
 }
 
 func (s *AIService) Ask(ctx context.Context, userID string, req domain.ChatRequest, token string) (*domain.ChatResponse, error) {
+	limit, used, err := s.ensureAskAIWithinQuota(ctx, userID, token)
+	if err != nil {
+		return nil, err
+	}
+
 	var sessionID string
 	if req.SessionID != "" {
 		sessionID = req.SessionID
@@ -323,6 +335,15 @@ func (s *AIService) Ask(ctx context.Context, userID string, req domain.ChatReque
 
 	_ = s.usageRepo.IncrementUsage(ctx, userID, int(resp.UsageMetadata.PromptTokenCount), int(resp.UsageMetadata.CandidatesTokenCount), token)
 
+	// Best-effort logging if the request pushed user over quota (we gate before the call,
+	// but the model can still use variable tokens).
+	if limit > 0 {
+		reqTokens := int(resp.UsageMetadata.PromptTokenCount) + int(resp.UsageMetadata.CandidatesTokenCount)
+		if used+reqTokens > limit {
+			s.logger.Warn("Ask AI exceeded monthly quota (post-call)", "user_id", userID, "limit", limit, "used_before", used, "used_after", used+reqTokens)
+		}
+	}
+
 	return &domain.ChatResponse{
 		SessionID: sessionID,
 		Message:   answer,
@@ -331,6 +352,10 @@ func (s *AIService) Ask(ctx context.Context, userID string, req domain.ChatReque
 }
 
 func (s *AIService) GetChatHistory(ctx context.Context, userID, sessionID string, token string) (*domain.ChatSessionData, error) {
+	if err := s.ensureAskAIEntitled(ctx, userID, token); err != nil {
+		return nil, err
+	}
+
 	sess, err := s.chatRepo.GetSession(ctx, sessionID, token)
 	if err != nil {
 		return nil, err
@@ -348,6 +373,61 @@ func (s *AIService) GetChatHistory(ctx context.Context, userID, sessionID string
 		Session:  sess,
 		Messages: msgs,
 	}, nil
+}
+
+func (s *AIService) ensureAskAIEntitled(ctx context.Context, userID string, token string) error {
+	if s.prefsRepo == nil {
+		return fmt.Errorf("preferences repository not configured")
+	}
+	prefs, err := s.prefsRepo.GetPreferences(userID, token)
+	if err != nil {
+		return fmt.Errorf("failed to load user preferences: %w", err)
+	}
+	plan := "free"
+	if prefs != nil && prefs.SubscriptionPlan != "" {
+		plan = prefs.SubscriptionPlan
+	}
+	if !domain.AskAIEnabledForPlan(plan) {
+		return domain.ErrPlanUpgradeRequired
+	}
+	return nil
+}
+
+// ensureAskAIWithinQuota validates entitlement and monthly token quota.
+// Returns (monthlyLimit, tokensUsedSoFar, error).
+func (s *AIService) ensureAskAIWithinQuota(ctx context.Context, userID string, token string) (int, int, error) {
+	if err := s.ensureAskAIEntitled(ctx, userID, token); err != nil {
+		return 0, 0, err
+	}
+
+	// We currently use the same quota for Pro/Founder.
+	// If we later add per-plan quotas, compute from plan here.
+	limit := domain.MonthlyAITokenLimitForPlan("pro_monthly")
+	if limit <= 0 {
+		return 0, 0, domain.ErrPlanUpgradeRequired
+	}
+
+	if s.usageRepo == nil {
+		return limit, 0, fmt.Errorf("usage repository not configured")
+	}
+
+	now := time.Now().UTC()
+	periodStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+	ledger, err := s.usageRepo.GetUsage(ctx, userID, periodStart, token)
+	if err != nil {
+		return limit, 0, fmt.Errorf("failed to load usage: %w", err)
+	}
+
+	used := 0
+	if ledger != nil {
+		used = ledger.TokensIn + ledger.TokensOut
+	}
+
+	if used >= limit {
+		return limit, used, domain.ErrMonthlyTokenLimitHit
+	}
+
+	return limit, used, nil
 }
 
 // generateEmbedding generates embeddings using Vertex AI REST API manually

@@ -13,6 +13,8 @@ var (
 	ErrInvalidFile             = errors.New("invalid file")
 	ErrTagNotFound             = errors.New("tag not found")
 	ErrTagAlreadyExists        = errors.New("tag already exists")
+	ErrPlanUpgradeRequired     = errors.New("plan upgrade required")
+	ErrMonthlyTokenLimitHit    = errors.New("monthly token limit reached")
 )
 
 // ValidationError represents a validation error with field and message information.
