@@ -376,33 +376,37 @@ func (s *AIService) GetChatHistory(ctx context.Context, userID, sessionID string
 }
 
 func (s *AIService) ensureAskAIEntitled(ctx context.Context, userID string, token string) error {
+	_, err := s.getSubscriptionPlan(ctx, userID, token)
+	return err
+}
+
+func (s *AIService) getSubscriptionPlan(ctx context.Context, userID string, token string) (string, error) {
 	if s.prefsRepo == nil {
-		return fmt.Errorf("preferences repository not configured")
+		return "", fmt.Errorf("preferences repository not configured")
 	}
 	prefs, err := s.prefsRepo.GetPreferences(userID, token)
 	if err != nil {
-		return fmt.Errorf("failed to load user preferences: %w", err)
+		return "", fmt.Errorf("failed to load user preferences: %w", err)
 	}
 	plan := "free"
 	if prefs != nil && prefs.SubscriptionPlan != "" {
 		plan = prefs.SubscriptionPlan
 	}
 	if !domain.AskAIEnabledForPlan(plan) {
-		return domain.ErrPlanUpgradeRequired
+		return "", domain.ErrPlanUpgradeRequired
 	}
-	return nil
+	return plan, nil
 }
 
 // ensureAskAIWithinQuota validates entitlement and monthly token quota.
 // Returns (monthlyLimit, tokensUsedSoFar, error).
 func (s *AIService) ensureAskAIWithinQuota(ctx context.Context, userID string, token string) (int, int, error) {
-	if err := s.ensureAskAIEntitled(ctx, userID, token); err != nil {
+	plan, err := s.getSubscriptionPlan(ctx, userID, token)
+	if err != nil {
 		return 0, 0, err
 	}
 
-	// We currently use the same quota for Pro/Founder.
-	// If we later add per-plan quotas, compute from plan here.
-	limit := domain.MonthlyAITokenLimitForPlan("pro_monthly")
+	limit := domain.MonthlyAITokenLimitForPlan(plan)
 	if limit <= 0 {
 		return 0, 0, domain.ErrPlanUpgradeRequired
 	}
