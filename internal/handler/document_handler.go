@@ -4,6 +4,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -219,6 +220,25 @@ func (h *DocumentHandler) UploadDocument(w http.ResponseWriter, r *http.Request)
 	}
 	defer file.Close()
 
+	// Sanitize filename (strip any path components)
+	originalName := strings.TrimSpace(filepath.Base(header.Filename))
+	if originalName == "" || originalName == "." || originalName == string(filepath.Separator) {
+		originalName = "document"
+	}
+
+	// Validate extension (strict allow-list)
+	ext := strings.ToLower(filepath.Ext(originalName))
+	allowedExt := map[string]bool{
+		".pdf":  true,
+		".epub": true,
+		".txt":  true,
+		".md":   true,
+	}
+	if ext == "" || !allowedExt[ext] {
+		h.writeError(w, http.StatusBadRequest, "Unsupported file type. Allowed: PDF (.pdf), EPUB (.epub), TXT (.txt), Markdown (.md).")
+		return
+	}
+
 	// Validate file size
 	if header.Size > 15<<20 { // 15MB single file limit
 		h.writeError(w, http.StatusBadRequest, "File too large. Maximum single file size is 15MB.")
@@ -236,7 +256,7 @@ func (h *DocumentHandler) UploadDocument(w http.ResponseWriter, r *http.Request)
 		user.ID,
 		file,
 		token,
-		header.Filename,
+		originalName,
 	)
 	if err != nil {
 		// If the error message mentions storage limit, return 400 with friendly text
