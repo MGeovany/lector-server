@@ -39,4 +39,3 @@ func MonthlyAITokenLimitForPlan(plan string) int {
 		return 500_000
 	}
 }
-

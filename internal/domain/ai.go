@@ -50,10 +50,10 @@ type ChatMessage struct {
 
 // UsageLedger tracks token usage for billing/trial limits.
 type UsageLedger struct {
-	ID           string    `json:"id"`
-	UserID       string    `json:"user_id"`
-	PeriodStart  time.Time `json:"period_start"`
-	PeriodEnd    time.Time `json:"period_end,omitempty"`
+	ID          string    `json:"id"`
+	UserID      string    `json:"user_id"`
+	PeriodStart time.Time `json:"period_start"`
+	PeriodEnd   time.Time `json:"period_end,omitempty"`
 	// Note: Supabase table uses `tokens_used_input` / `tokens_used_output`.
 	// Keep field names stable in Go, but match JSON keys so unmarshalling works.
 	TokensIn     int       `json:"tokens_used_input"`
