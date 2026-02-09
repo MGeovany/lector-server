@@ -429,11 +429,21 @@ func (s *DocumentService) Upload(
 				return
 			}
 
-			s.logger.Info("Document processed",
+			readyPages := 0
+			for _, s := range optimizedPages {
+				if strings.TrimSpace(s) != "" {
+					readyPages++
+				}
+			}
+			s.logger.Info("[Doc] Document processed",
 				"doc_id", docID,
 				"blocks_count", len(blocks),
 				"page_count", pdfMetadata.PageCount,
+				"pages_with_text", readyPages,
 			)
+			if pdfMetadata.PageCount > 0 && readyPages == 0 {
+				s.logger.Warn("[Doc] Document has no extractable text; likely scanned/image-only PDF", "doc_id", docID, "page_count", pdfMetadata.PageCount)
+			}
 			return
 
 		case "txt", "md", "epub":

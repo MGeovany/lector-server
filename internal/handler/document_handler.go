@@ -406,7 +406,7 @@ func (h *DocumentHandler) GetOptimizedDocument(w http.ResponseWriter, r *http.Re
 			includePages = false
 		}
 	}
-	h.logger.Info("GetOptimizedDocument request", "document_id", documentID, "include_pages", includePages)
+	h.logger.Info("[Doc] GetOptimizedDocument request", "document_id", documentID, "include_pages", includePages)
 
 	var opt *domain.OptimizedDocument
 	var err error
@@ -434,7 +434,10 @@ func (h *DocumentHandler) GetOptimizedDocument(w http.ResponseWriter, r *http.Re
 	if opt.OptimizedSizeBytes != nil {
 		optSize = *opt.OptimizedSizeBytes
 	}
-	h.logger.Info("GetOptimizedDocument response", "document_id", documentID, "processing_status", opt.ProcessingStatus, "pages_ready", readyCount, "pages_total", pageCount, "optimized_size_bytes", optSize)
+	h.logger.Info("[Doc] GetOptimizedDocument response", "document_id", documentID, "processing_status", opt.ProcessingStatus, "pages_ready", readyCount, "pages_total", pageCount, "optimized_size_bytes", optSize)
+	if pageCount > 0 && readyCount == 0 && opt.ProcessingStatus == "ready" {
+		h.logger.Warn("[Doc] GetOptimizedDocument returning ready but no page content (empty/scanned PDF?)", "document_id", documentID, "pages_total", pageCount)
+	}
 	if opt.UserID != "" && opt.UserID != user.ID {
 		h.writeError(w, http.StatusForbidden, "Access denied")
 		return
@@ -462,8 +465,6 @@ func (h *DocumentHandler) GetOptimizedDocument(w http.ResponseWriter, r *http.Re
 			return
 		}
 		h.logger.Info("GetOptimizedDocument 202 not ready", "document_id", documentID, "status", opt.ProcessingStatus)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusAccepted)
 		h.writeJSON(w, http.StatusAccepted, opt)
 		return
 	}
@@ -474,7 +475,7 @@ func (h *DocumentHandler) GetOptimizedDocument(w http.ResponseWriter, r *http.Re
 		opt.ProcessedAt = &now
 	}
 
-	h.logger.Info("GetOptimizedDocument 200 ready", "document_id", documentID, "pages_total", pageCount)
+	h.logger.Info("[Doc] GetOptimizedDocument 200 ready", "document_id", documentID, "pages_total", pageCount)
 	h.writeJSON(w, http.StatusOK, opt)
 }
 

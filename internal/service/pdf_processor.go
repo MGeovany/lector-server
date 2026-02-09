@@ -102,7 +102,6 @@ func (p *PDFProcessor) ProcessPDFWithCallbacks(
 
 	// Process each page
 	for pageNum := 0; pageNum < numPages; pageNum++ {
-		p.logger.Debug("PDF processing page", "page", pageNum+1, "total", numPages)
 		resultCh := make(chan pageResult, 1)
 		go func(idx int) {
 			t, e := doc.Text(idx)
@@ -120,7 +119,7 @@ func (p *PDFProcessor) ProcessPDFWithCallbacks(
 			go func() { <-resultCh }() // drain so goroutine can exit
 		}
 		if err != nil {
-			p.logger.Warn("Failed to extract text from page", "page_num", pageNum+1, "total", numPages, "error", err)
+			p.logger.Warn("[Doc] PDF page extraction failed", "page_num", pageNum+1, "total", numPages, "error", err)
 			if onPage != nil {
 				onPage(pageNum+1, "")
 			}
@@ -137,6 +136,7 @@ func (p *PDFProcessor) ProcessPDFWithCallbacks(
 		// If page has no text, still create an empty block to preserve page structure
 		text = strings.TrimSpace(text)
 		if text == "" {
+			p.logger.Debug("[Doc] PDF page has no extractable text (scanned/image?)", "page_num", pageNum+1, "total", numPages, "chars", 0)
 			// Create an empty block for empty pages to maintain page count
 			blocks = append(blocks, TextBlock{
 				Type:       "paragraph",
@@ -150,6 +150,7 @@ func (p *PDFProcessor) ProcessPDFWithCallbacks(
 			}
 			continue
 		}
+		p.logger.Debug("PDF processing page", "page", pageNum+1, "total", numPages, "chars", len(text))
 
 		// Split text into paragraphs and process
 		paragraphs := p.splitIntoParagraphs(text)
