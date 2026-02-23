@@ -115,7 +115,8 @@ func (p *PDFProcessor) ProcessPDFWithCallbacks(
 			p.logger.Warn("PDF page extraction timeout; using empty page", "page", pageNum+1, "total", numPages, "timeout_sec", int(pageTimeout.Seconds()))
 			text = ""
 			err = fmt.Errorf("timeout after %v", pageTimeout)
-			go func() { <-resultCh }() // drain so goroutine can exit
+			// resultCh is buffered (cap 1), so the extraction goroutine can send and exit without a receiver.
+			// If go-fitz blocks indefinitely in doc.Text(), that goroutine may leak; go-fitz has no context support.
 		}
 		if err != nil {
 			p.logger.Warn("[Doc] PDF page extraction failed", "page_num", pageNum+1, "total", numPages, "error", err)
