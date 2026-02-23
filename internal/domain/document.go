@@ -76,21 +76,6 @@ type Document struct {
 	Metadata DocumentMetadata `json:"metadata"`
 	Tag      *string          `json:"tag,omitempty"` // Single tag (document can only have one tag)
 
-	// Offline-first fields
-	OriginalStoragePath     *string         `json:"original_storage_path,omitempty"`
-	OriginalFileName        *string         `json:"original_file_name,omitempty"`
-	OriginalMimeType        *string         `json:"original_mime_type,omitempty"`
-	OriginalSizeBytes       *int64          `json:"original_size_bytes,omitempty"`
-	OriginalChecksumSHA256  *string         `json:"original_checksum_sha256,omitempty"`
-	OptimizedContent        json.RawMessage `json:"optimized_content,omitempty"`
-	OptimizedVersion        int             `json:"optimized_version"`
-	OptimizedSizeBytes      *int64          `json:"optimized_size_bytes,omitempty"`
-	OptimizedChecksumSHA256 *string         `json:"optimized_checksum_sha256,omitempty"`
-	ProcessingStatus        string          `json:"processing_status"`
-	ProcessingError         *string         `json:"processing_error,omitempty"`
-	LanguageCode            *string         `json:"language_code,omitempty"`
-	ProcessedAt             *time.Time      `json:"processed_at,omitempty"`
-
 	IsFavorite bool `json:"is_favorite"`
 
 	// Optional reading position (when requested by endpoints like documents/user/{id}).
@@ -137,8 +122,6 @@ type LibraryResponse struct {
 type DocumentRepository interface {
 	Create(document *Document, token string) error
 	GetByID(id string, token string) (*Document, error)
-	GetOptimizedByID(id string, token string) (*OptimizedDocument, error)
-	GetOptimizedMetaByID(id string, token string) (*OptimizedDocument, error)
 	GetByUserID(userID string, token string) ([]*Document, error)
 	Update(document *Document, token string) error
 	Delete(id string, token string) error
@@ -155,8 +138,6 @@ type DocumentRepository interface {
 type DocumentService interface {
 	GetDocumentsByUserID(userID string, token string) ([]*DocumentData, error)
 	GetDocument(documentID string, token string) (*DocumentData, error)
-	GetOptimizedDocument(documentID string, token string) (*OptimizedDocument, error)
-	GetOptimizedDocumentMeta(documentID string, token string) (*OptimizedDocument, error)
 	DeleteDocument(documentID string, token string) error
 	SearchDocuments(userID, query string, token string) ([]*DocumentData, error)
 	SetFavorite(userID string, documentID string, isFavorite bool, token string) error
@@ -178,18 +159,4 @@ type DocumentService interface {
 		token string,
 		originalName string,
 	) (*DocumentData, error)
-}
-
-// OptimizedDocument is a lightweight, offline-friendly representation.
-// Pages is typically a JSONB array of strings stored in `documents.optimized_content`.
-type OptimizedDocument struct {
-	DocumentID           string     `json:"document_id"`
-	UserID               string     `json:"-"`
-	ProcessingStatus     string     `json:"processing_status"`
-	OptimizedVersion     int        `json:"optimized_version"`
-	OptimizedChecksumSHA *string    `json:"optimized_checksum_sha256,omitempty"`
-	OptimizedSizeBytes   *int64     `json:"optimized_size_bytes,omitempty"`
-	LanguageCode         *string    `json:"language_code,omitempty"`
-	ProcessedAt          *time.Time `json:"processed_at,omitempty"`
-	Pages                []string   `json:"pages,omitempty"`
 }

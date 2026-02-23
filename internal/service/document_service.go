@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"path/filepath"
 	"strings"
 	"time"
@@ -55,14 +54,6 @@ func (s *DocumentService) GetDocument(documentID string, token string) (*domain.
 		return nil, err
 	}
 	return document, nil
-}
-
-func (s *DocumentService) GetOptimizedDocument(documentID string, token string) (*domain.OptimizedDocument, error) {
-	return s.repo.GetOptimizedByID(documentID, token)
-}
-
-func (s *DocumentService) GetOptimizedDocumentMeta(documentID string, token string) (*domain.OptimizedDocument, error) {
-	return s.repo.GetOptimizedMetaByID(documentID, token)
 }
 
 func (s *DocumentService) DeleteDocument(documentID string, token string) error {
@@ -229,15 +220,6 @@ func (s *DocumentService) Upload(
 		}
 	}
 
-	// Compute original checksum + mime type
-	origSum := sha256.Sum256(fileBytes)
-	origChecksum := hex.EncodeToString(origSum[:])
-	sample := fileBytes
-	if len(sample) > 512 {
-		sample = sample[:512]
-	}
-	origMime := http.DetectContentType(sample)
-
 	// Enforce per-user storage quota BEFORE uploading to storage
 	// Get current documents to calculate total storage used
 	existingDocs, err := s.repo.GetByUserID(userID, token)
@@ -247,10 +229,6 @@ func (s *DocumentService) Upload(
 
 	var currentUsage int64
 	for _, d := range existingDocs {
-		if d.OriginalSizeBytes != nil && *d.OriginalSizeBytes > 0 {
-			currentUsage += *d.OriginalSizeBytes
-			continue
-		}
 		currentUsage += d.Metadata.FileSize
 	}
 
@@ -275,41 +253,143 @@ func (s *DocumentService) Upload(
 		baseTitle = originalName
 	}
 
-	// Create document row first (offline-first: server can later fill optimized_content)
-	// Then process synchronously (small) or asynchronously (large).
+	// Process PDF to extract text and metadata
+	// For small files, process immediately; for larger files, process in background
+	// Threshold: 2MB - files larger than this will be processed asynchronously
 	const asyncThreshold = 2 * 1024 * 1024 // 2MB
 
-	// Base metadata: always include file info.
-	baseMetadata := domain.DocumentMetadata{
-		OriginalTitle: originalName,
-		FileSize:      totalSize,
-		Format:        format,
-		Source:        "upload",
+	var contentJSON json.RawMessage
+	var metadata domain.DocumentMetadata
+	title := originalName
+
+	if totalSize < asyncThreshold {
+		// Process synchronously for small files
+		blocks, pdfMetadata, err := s.pdfProcessor.ProcessPDF(fileBytes)
+		if err != nil {
+			s.logger.Error("Failed to process PDF", err, "doc_id", docID)
+			contentJSON = json.RawMessage("[]")
+			metadata = domain.DocumentMetadata{
+				OriginalTitle: originalName,
+				FileSize:      totalSize,
+				Format:        format,
+				Source:        "upload",
+			}
+		} else {
+			contentJSON, err = s.pdfProcessor.ConvertToJSON(blocks)
+			if err != nil {
+				s.logger.Error("Failed to convert blocks to JSON", err, "doc_id", docID)
+				contentJSON = json.RawMessage("[]")
+			}
+
+			if pdfMetadata.Title != "" {
+				title = pdfMetadata.Title
+			}
+
+			metadata = domain.DocumentMetadata{
+				OriginalTitle:  originalName,
+				OriginalAuthor: pdfMetadata.Author,
+				PageCount:      pdfMetadata.PageCount,
+				HasPassword:    pdfMetadata.HasPassword,
+				FileSize:       totalSize,
+				Format:         "pdf",
+				Source:         "upload",
+			}
+
+			s.logger.Info("DocumentData processed synchronously",
+				"doc_id", docID,
+				"blocks_count", len(blocks),
+				"page_count", pdfMetadata.PageCount,
+			)
+		}
+	} else {
+		// For larger files, create document first and process in background
+		contentJSON = json.RawMessage("[]")
+		metadata = domain.DocumentMetadata{
+			OriginalTitle: originalName,
+			FileSize:      totalSize,
+			Format:        format,
+			Source:        "upload",
+		}
+
+		// Process in background goroutine
+		go func() {
+			blocks, pdfMetadata, err := s.pdfProcessor.ProcessPDF(fileBytes)
+			if err != nil {
+				s.logger.Error("Failed to process PDF in background", err, "doc_id", docID)
+				return
+			}
+
+			contentJSON, err := s.pdfProcessor.ConvertToJSON(blocks)
+			if err != nil {
+				s.logger.Error("Failed to convert blocks to JSON in background", err, "doc_id", docID)
+				return
+			}
+
+			// Determine title
+			docTitle := originalName
+			if pdfMetadata.Title != "" {
+				docTitle = pdfMetadata.Title
+			}
+
+			// Update document with processed content
+			updatedDoc := &domain.DocumentData{
+				ID:      docID,
+				UserID:  userID,
+				Title:   docTitle,
+				Content: contentJSON,
+				Metadata: domain.DocumentMetadata{
+					OriginalTitle:  originalName,
+					OriginalAuthor: pdfMetadata.Author,
+					PageCount:      pdfMetadata.PageCount,
+					HasPassword:    pdfMetadata.HasPassword,
+					FileSize:       totalSize,
+					Format:         "pdf",
+					Source:         "upload",
+				},
+				UpdatedAt: time.Now().UTC(),
+			}
+
+			if err := s.repo.Update(updatedDoc, token); err != nil {
+				s.logger.Error("Failed to update document with processed content", err, "doc_id", docID)
+				return
+			}
+
+			s.logger.Info("DocumentData processed in background",
+				"doc_id", docID,
+				"blocks_count", len(blocks),
+				"page_count", pdfMetadata.PageCount,
+			)
+		}()
+
+		s.logger.Info("DocumentData created, processing in background", "doc_id", docID, "file_size", totalSize)
 	}
 
-	origPath := path
-	origName := originalName
-	origMimeCopy := origMime
-	origSize := totalSize
-	origChecksumCopy := origChecksum
+	// Set author from PDF metadata if available, otherwise leave nil
+	var author *string
+	if metadata.OriginalAuthor != "" {
+		author = &metadata.OriginalAuthor
+	}
+
+	// Ensure metadata includes file information
+	if metadata.FileSize == 0 {
+		metadata.FileSize = totalSize
+	}
+	if metadata.OriginalTitle == "" {
+		metadata.OriginalTitle = originalName
+	}
+	if metadata.Format == "" {
+		metadata.Format = "pdf"
+	}
 
 	doc := &domain.DocumentData{
 		ID:        docID,
 		UserID:    userID,
-		Title:     baseTitle,
-		Content:   json.RawMessage("[]"),
-		Metadata:  baseMetadata,
+		Title:     title,
+		Author:    author,
+		Content:   contentJSON,
+		Metadata:  metadata,
 		CreatedAt: now,
 		UpdatedAt: now,
-
-		OriginalStoragePath:    &origPath,
-		OriginalFileName:       &origName,
-		OriginalMimeType:       &origMimeCopy,
-		OriginalSizeBytes:      &origSize,
-		OriginalChecksumSHA256: &origChecksumCopy,
-
-		OptimizedVersion: 1,
-		ProcessingStatus: "processing",
 	}
 
 	if err := s.repo.Create(doc, token); err != nil {
@@ -531,4 +611,38 @@ func (s *DocumentService) Upload(
 	go processAndUpdate(&backgroundDoc)
 	s.logger.Info("Document created; processing in background", "doc_id", docID, "file_size", totalSize)
 	return doc, nil
+}
+
+// GetOptimizedDocument returns the optimized document with pages for offline-first clients.
+func (s *DocumentService) GetOptimizedDocument(documentID string, token string) (*domain.OptimizedDocument, error) {
+	return s.getOptimizedDocument(documentID, token, true)
+}
+
+// GetOptimizedDocumentMeta returns optimized document metadata without page content.
+func (s *DocumentService) GetOptimizedDocumentMeta(documentID string, token string) (*domain.OptimizedDocument, error) {
+	return s.getOptimizedDocument(documentID, token, false)
+}
+
+func (s *DocumentService) getOptimizedDocument(documentID string, token string, includePages bool) (*domain.OptimizedDocument, error) {
+	doc, err := s.repo.GetByID(documentID, token)
+	if err != nil {
+		return nil, err
+	}
+	opt := &domain.OptimizedDocument{
+		DocumentID:         doc.ID,
+		UserID:             doc.UserID,
+		OptimizedSizeBytes: doc.OptimizedSizeBytes,
+		ProcessingStatus:   doc.ProcessingStatus,
+		ProcessedAt:        doc.ProcessedAt,
+	}
+	if doc.OptimizedChecksumSHA256 != nil {
+		opt.OptimizedChecksumSHA = doc.OptimizedChecksumSHA256
+	}
+	if includePages && len(doc.OptimizedContent) > 0 {
+		var pages []string
+		if err := json.Unmarshal(doc.OptimizedContent, &pages); err == nil {
+			opt.Pages = pages
+		}
+	}
+	return opt, nil
 }

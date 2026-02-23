@@ -38,23 +38,6 @@ func (m *MockDocumentRepository) GetByID(id string, token string) (*domain.Docum
 	return nil, errors.New("document not found")
 }
 
-func (m *MockDocumentRepository) GetOptimizedByID(id string, token string) (*domain.OptimizedDocument, error) {
-	// Minimal mock: return ready with empty pages if doc exists.
-	if _, exists := m.documents[id]; !exists {
-		return nil, errors.New("document not found")
-	}
-	return &domain.OptimizedDocument{
-		DocumentID:       id,
-		ProcessingStatus: "ready",
-		OptimizedVersion: 1,
-		Pages:            []string{},
-	}, nil
-}
-
-func (m *MockDocumentRepository) GetOptimizedMetaByID(id string, token string) (*domain.OptimizedDocument, error) {
-	return m.GetOptimizedByID(id, token)
-}
-
 func (m *MockDocumentRepository) GetByUserID(userID string, token string) ([]*domain.Document, error) {
 	var docs []*domain.Document
 	for _, doc := range m.documents {

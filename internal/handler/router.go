@@ -56,10 +56,9 @@ func NewRouter(
 
 	// Get lightweight optimized pages by ID (offline-first)
 	protected.HandleFunc("/documents/{id}/optimized", documentHandler.GetOptimizedDocument).Methods(http.MethodGet)
-	
+
 	// Ingest document for AI (generate embeddings)
 	protected.HandleFunc("/documents/{id}/ingest", aiHandler.Ingest).Methods(http.MethodPost)
-
 	// Update doc by ID
 	protected.HandleFunc("/documents/{id}", documentHandler.UpdateDocument).Methods(http.MethodPut)
 
@@ -102,7 +101,7 @@ func NewRouter(
 	protected.HandleFunc("/highlights", highlightHandler.ListHighlights).Methods(http.MethodGet)
 	protected.HandleFunc("/highlights", highlightHandler.CreateHighlight).Methods(http.MethodPost)
 	protected.HandleFunc("/highlights/{id}", highlightHandler.DeleteHighlight).Methods(http.MethodDelete)
-	
+
 	// Ask AI
 	protected.HandleFunc("/ask-ai", aiHandler.Ask).Methods(http.MethodPost)
 	protected.HandleFunc("/chat/{id}", aiHandler.GetChatHistory).Methods(http.MethodGet)
