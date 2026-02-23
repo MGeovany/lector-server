@@ -580,6 +580,34 @@ func (r *DocumentRepository) Update(document *domain.Document, token string) err
 		data["description"] = nil
 	}
 
+	// Persist optimized/processing fields so /documents/{id}/optimized reflects ready state
+	if len(document.OptimizedContent) > 0 {
+		var optContent interface{}
+		if err := json.Unmarshal(document.OptimizedContent, &optContent); err == nil {
+			data["optimized_content"] = optContent
+		}
+	}
+	if document.OptimizedSizeBytes != nil {
+		data["optimized_size_bytes"] = *document.OptimizedSizeBytes
+	}
+	if document.OptimizedChecksumSHA256 != nil {
+		data["optimized_checksum_sha256"] = *document.OptimizedChecksumSHA256
+	}
+	if document.ProcessingStatus != "" {
+		data["processing_status"] = document.ProcessingStatus
+	}
+	if document.ProcessedAt != nil {
+		data["processed_at"] = document.ProcessedAt.Format(time.RFC3339)
+	}
+	// Only write processing_error when we're updating processing state (avoid clearing it on unrelated updates)
+	if document.ProcessingStatus != "" || document.ProcessedAt != nil {
+		if document.ProcessingError != nil {
+			data["processing_error"] = *document.ProcessingError
+		} else {
+			data["processing_error"] = nil
+		}
+	}
+
 	_, _, err = client.From("documents").
 		Update(data, "", "").
 		Eq("id", document.ID).
