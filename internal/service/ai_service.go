@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -438,7 +439,16 @@ func (s *AIService) ensureAskAIWithinQuota(ctx context.Context, userID string, t
 // generateEmbedding generates embeddings using Vertex AI REST API manually
 func (s *AIService) generateEmbedding(ctx context.Context, text string) ([]float32, error) {
 	// Endpoint: https://{LOCATION}-aiplatform.googleapis.com/v1/projects/{PROJECT}/locations/{LOCATION}/publishers/google/models/{MODEL}:predict
-	url := fmt.Sprintf("https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s/publishers/google/models/text-embedding-004:predict", s.location, s.projectID, s.location)
+	embedURL := fmt.Sprintf("https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s/publishers/google/models/text-embedding-004:predict", s.location, s.projectID, s.location)
+
+	// Restrict to Vertex AI host to prevent SSRF (gosec G704)
+	parsed, err := url.Parse(embedURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid embedding URL: %w", err)
+	}
+	if !strings.HasSuffix(parsed.Host, "aiplatform.googleapis.com") {
+		return nil, fmt.Errorf("embedding URL host not allowed: %s", parsed.Host)
+	}
 
 	requestBody := map[string]interface{}{
 		"instances": []map[string]interface{}{
@@ -450,7 +460,7 @@ func (s *AIService) generateEmbedding(ctx context.Context, text string) ([]float
 		return nil, err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonBody))
+	req, err := http.NewRequestWithContext(ctx, "POST", embedURL, bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return nil, err
 	}
@@ -471,6 +481,8 @@ func (s *AIService) generateEmbedding(ctx context.Context, text string) ([]float
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{Timeout: 30 * time.Second}
+	// G704: URL is validated above to only allow *aiplatform.googleapis.com
+	// #nosec G704
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
