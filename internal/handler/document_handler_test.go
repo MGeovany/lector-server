@@ -120,10 +120,11 @@ func (m *MockDocumentService) Upload(ctx context.Context, userID string, file io
 }
 
 func (m *MockDocumentService) GetOptimizedDocument(documentID string, token string) (*domain.OptimizedDocument, error) {
-	if _, exists := m.documents[documentID]; exists {
+	if doc, exists := m.documents[documentID]; exists {
 		sum := "checksum_sha256"
 		return &domain.OptimizedDocument{
 			DocumentID:              documentID,
+			UserID:                  doc.UserID,
 			ProcessingStatus:        "processing",
 			Pages:                   []string{"page 1", "", "page 3"},
 			OptimizedVersion:        domain.CurrentOptimizedPayloadVersion,
