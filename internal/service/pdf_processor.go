@@ -403,3 +403,25 @@ func (p *PDFProcessor) ConvertToJSON(blocks []TextBlock) (json.RawMessage, error
 
 	return json.RawMessage(finalJSONStr), nil
 }
+
+// ConvertToOptimizedPagesJSON converts TextBlocks to a JSON array of page strings (one string per page).
+func (p *PDFProcessor) ConvertToOptimizedPagesJSON(blocks []TextBlock, pageCount int) (json.RawMessage, error) {
+	pages := make([]string, pageCount)
+	for i := range pages {
+		pages[i] = ""
+	}
+	for _, b := range blocks {
+		if b.PageNumber >= 1 && b.PageNumber <= pageCount {
+			idx := b.PageNumber - 1
+			if pages[idx] != "" {
+				pages[idx] += "\n"
+			}
+			pages[idx] += b.Content
+		}
+	}
+	jsonBytes, err := json.Marshal(pages)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal optimized pages: %w", err)
+	}
+	return json.RawMessage(jsonBytes), nil
+}

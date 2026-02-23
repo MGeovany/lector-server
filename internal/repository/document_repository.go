@@ -320,6 +320,31 @@ func (r *DocumentRepository) GetByID(id string, token string) (*domain.Document,
 	return r.mapToDocument(docData)
 }
 
+// GetOptimizedByID returns the optimized document (pages, checksum, status) for a document by ID.
+func (r *DocumentRepository) GetOptimizedByID(documentID string, token string) (*domain.OptimizedDocument, error) {
+	doc, err := r.GetByID(documentID, token)
+	if err != nil {
+		return nil, err
+	}
+	opt := &domain.OptimizedDocument{
+		DocumentID:         doc.ID,
+		UserID:             doc.UserID,
+		OptimizedSizeBytes: doc.OptimizedSizeBytes,
+		ProcessingStatus:   doc.ProcessingStatus,
+		ProcessedAt:        doc.ProcessedAt,
+	}
+	if doc.OptimizedChecksumSHA256 != nil {
+		opt.OptimizedChecksumSHA = doc.OptimizedChecksumSHA256
+	}
+	if len(doc.OptimizedContent) > 0 {
+		var pages []string
+		if err := json.Unmarshal(doc.OptimizedContent, &pages); err == nil {
+			opt.Pages = pages
+		}
+	}
+	return opt, nil
+}
+
 // GetByUserID retrieves all documents for a user
 func (r *DocumentRepository) GetByUserID(userID string, token string) ([]*domain.Document, error) {
 	client, err := r.supabaseClient.GetClientWithToken(token)
@@ -792,6 +817,37 @@ func (r *DocumentRepository) mapToDocument(data map[string]interface{}) (*domain
 		}
 	}
 
+	// Optimized/processing fields (optional)
+	if optimizedContentVal, ok := data["optimized_content"]; ok && optimizedContentVal != nil {
+		if contentStr, ok := optimizedContentVal.(string); ok {
+			document.OptimizedContent = json.RawMessage(contentStr)
+		} else {
+			contentJSON, err := json.Marshal(optimizedContentVal)
+			if err == nil {
+				document.OptimizedContent = contentJSON
+			}
+		}
+	}
+	if v := getInt64Ptr(data, "optimized_size_bytes"); v != nil {
+		document.OptimizedSizeBytes = v
+	}
+	if v := getStringPointer(data, "optimized_checksum_sha256"); v != nil {
+		document.OptimizedChecksumSHA256 = v
+	}
+	if v := getString(data, "processing_status"); v != "" {
+		document.ProcessingStatus = v
+	}
+	if processedAt := getString(data, "processed_at"); processedAt != "" {
+		if t, err := time.Parse(time.RFC3339, processedAt); err == nil {
+			document.ProcessedAt = &t
+		} else if t, err := time.Parse(time.RFC3339Nano, processedAt); err == nil {
+			document.ProcessedAt = &t
+		}
+	}
+	if v := getStringPointer(data, "processing_error"); v != nil {
+		document.ProcessingError = v
+	}
+
 	return document, nil
 }
 
@@ -852,6 +908,22 @@ func getStringPointer(data map[string]interface{}, key string) *string {
 				return nil
 			}
 			return &str
+		}
+	}
+	return nil
+}
+
+func getInt64Ptr(data map[string]interface{}, key string) *int64 {
+	if val, ok := data[key]; ok && val != nil {
+		switch v := val.(type) {
+		case int64:
+			return &v
+		case int:
+			i64 := int64(v)
+			return &i64
+		case float64:
+			i64 := int64(v)
+			return &i64
 		}
 	}
 	return nil
