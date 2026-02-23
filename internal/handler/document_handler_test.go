@@ -334,8 +334,8 @@ func TestDocumentHandler_GetOptimizedDocument_PartialIncludesiOSFields(t *testin
 	if opt.DocumentID != "doc1" {
 		t.Fatalf("expected document_id doc1, got %q", opt.DocumentID)
 	}
-	if opt.OptimizedVersion != 1 {
-		t.Fatalf("expected optimized_version 1, got %d", opt.OptimizedVersion)
+	if opt.OptimizedVersion != domain.CurrentOptimizedPayloadVersion {
+		t.Fatalf("expected optimized_version %d, got %d", domain.CurrentOptimizedPayloadVersion, opt.OptimizedVersion)
 	}
 	if opt.OptimizedChecksumSHA256 == nil || *opt.OptimizedChecksumSHA256 == "" {
 		t.Fatalf("expected optimized_checksum_sha256 to be set")
@@ -346,6 +346,33 @@ func TestDocumentHandler_GetOptimizedDocument_PartialIncludesiOSFields(t *testin
 	if opt.ProcessingStatus != "processing" {
 		t.Fatalf("expected processing_status processing, got %q", opt.ProcessingStatus)
 	}
+
+	// ETag is set for cache invalidation (checksum-based).
+	etag := rr.Header().Get("ETag")
+	if etag == "" {
+		t.Fatalf("expected ETag response header to be set")
+	}
+	expectedETag := `"checksum_sha256"`
+	if etag != expectedETag {
+		t.Fatalf("expected ETag %q, got %q", expectedETag, etag)
+	}
+
+	t.Run("304 when If-None-Match matches ETag", func(t *testing.T) {
+		req304 := httptest.NewRequest("GET", "/api/v1/documents/doc1/optimized", nil)
+		req304.Header.Set("If-None-Match", etag)
+		req304 = createContextWithUser(req304, user)
+		req304 = createContextWithToken(req304, "test-token")
+
+		rr304 := httptest.NewRecorder()
+		router.ServeHTTP(rr304, req304)
+
+		if rr304.Code != http.StatusNotModified {
+			t.Fatalf("expected status %d when If-None-Match matches, got %d. body=%s", http.StatusNotModified, rr304.Code, rr304.Body.String())
+		}
+		if rr304.Body.Len() != 0 {
+			t.Fatalf("expected empty body on 304, got %d bytes", rr304.Body.Len())
+		}
+	})
 }
 
 func TestDocumentHandler_SearchDocuments(t *testing.T) {
