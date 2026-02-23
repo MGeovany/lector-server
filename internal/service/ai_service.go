@@ -116,7 +116,7 @@ func (s *AIService) IngestDocument(ctx context.Context, userID, documentID strin
 			}
 			if err := s.vectorRepo.SavePage(ctx1, page, token); err != nil {
 				s.logger.Error("Failed to save page", err, "doc_id", documentID, "page", j.pageNumber)
-				return nil // continue with others
+				return fmt.Errorf("save page %d: %w", j.pageNumber, err)
 			}
 			pagesMu.Lock()
 			pagesByNumber[j.pageNumber] = page
@@ -127,8 +127,13 @@ func (s *AIService) IngestDocument(ctx context.Context, userID, documentID strin
 	if err := g1.Wait(); err != nil {
 		return err
 	}
+	if len(jobs) > 0 && len(pagesByNumber) == 0 {
+		return fmt.Errorf("ingestion failed: no pages could be persisted for document %s (DB/RLS or storage error)", documentID)
+	}
 
 	// Phase 2: generate embeddings and save in parallel, with limited concurrency for Vertex.
+	var embeddingsSaved int
+	var embeddingsMu sync.Mutex
 	sem := make(chan struct{}, ingestEmbedWorkers)
 	g2, ctx2 := errgroup.WithContext(ctx)
 	for _, j := range jobs {
@@ -162,11 +167,21 @@ func (s *AIService) IngestDocument(ctx context.Context, userID, documentID strin
 			}
 			if err := s.vectorRepo.SaveEmbedding(ctx2, emb, token); err != nil {
 				s.logger.Error("Failed to save embedding", err, "doc_id", documentID, "page", j.pageNumber)
+				return nil
 			}
+			embeddingsMu.Lock()
+			embeddingsSaved++
+			embeddingsMu.Unlock()
 			return nil
 		})
 	}
-	return g2.Wait()
+	if err := g2.Wait(); err != nil {
+		return err
+	}
+	if len(pagesByNumber) > 0 && embeddingsSaved == 0 {
+		return fmt.Errorf("ingestion failed: no embeddings could be persisted for document %s", documentID)
+	}
+	return nil
 }
 
 func (s *AIService) Ask(ctx context.Context, userID string, req domain.ChatRequest, token string) (*domain.ChatResponse, error) {
