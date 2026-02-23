@@ -95,10 +95,16 @@ type Document struct {
 
 // OptimizedDocument is the lightweight response for offline-first clients (optimized endpoint).
 type OptimizedDocument struct {
-	DocumentID           string     `json:"document_id,omitempty"`
-	UserID               string     `json:"user_id,omitempty"`
-	Pages                []string   `json:"pages,omitempty"`
-	OptimizedSizeBytes   *int64     `json:"optimized_size_bytes,omitempty"`
+	DocumentID   string   `json:"document_id,omitempty"`
+	UserID       string   `json:"user_id,omitempty"`
+	Pages        []string `json:"pages,omitempty"`
+	// OptimizedVersion is a monotonically increasing version of the optimized payload.
+	// Clients (iOS) use it for offline cache invalidation.
+	OptimizedVersion int `json:"optimized_version,omitempty"`
+	OptimizedSizeBytes *int64 `json:"optimized_size_bytes,omitempty"`
+	// OptimizedChecksumSHA256 is the checksum used by offline-first clients (iOS).
+	OptimizedChecksumSHA256 *string `json:"optimized_checksum_sha256,omitempty"`
+	// OptimizedChecksumSHA is kept for backwards compatibility (older clients / logs).
 	OptimizedChecksumSHA *string    `json:"optimized_checksum_sha,omitempty"`
 	ProcessingStatus     string     `json:"processing_status,omitempty"`
 	ProcessedAt          *time.Time `json:"processed_at,omitempty"`

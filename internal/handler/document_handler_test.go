@@ -121,10 +121,14 @@ func (m *MockDocumentService) Upload(ctx context.Context, userID string, file io
 
 func (m *MockDocumentService) GetOptimizedDocument(documentID string, token string) (*domain.OptimizedDocument, error) {
 	if _, exists := m.documents[documentID]; exists {
+		sum := "checksum_sha256"
 		return &domain.OptimizedDocument{
-			DocumentID:       documentID,
-			ProcessingStatus: "ready",
-			Pages:            []string{},
+			DocumentID:              documentID,
+			ProcessingStatus:        "processing",
+			Pages:                   []string{"page 1", "", "page 3"},
+			OptimizedVersion:        1,
+			OptimizedChecksumSHA256: &sum,
+			OptimizedChecksumSHA:    &sum, // alias
 		}, nil
 	}
 	return nil, domain.ErrDocumentNotFound
@@ -291,6 +295,55 @@ func TestDocumentHandler_GetDocument(t *testing.T) {
 
 	if responseDoc.ID != "doc1" {
 		t.Errorf("Expected document ID 'doc1', got '%s'", responseDoc.ID)
+	}
+}
+
+func TestDocumentHandler_GetOptimizedDocument_PartialIncludesIOSFields(t *testing.T) {
+	docService := NewMockDocumentService()
+	prefService := NewMockUserPreferencesService()
+	logger := NewMockHandlerLogger()
+
+	handler := NewDocumentHandler(docService, prefService, logger)
+
+	// Seed a document so GetOptimizedDocument returns a mock optimized payload.
+	doc := &domain.Document{ID: "doc1", UserID: "user1", Title: "Test Document"}
+	docService.documents["doc1"] = doc
+
+	req := httptest.NewRequest("GET", "/api/v1/documents/doc1/optimized", nil)
+	user := &domain.SupabaseUser{ID: "user1", Email: "test@example.com"}
+	req = createContextWithUser(req, user)
+	req = createContextWithToken(req, "test-token")
+
+	rr := httptest.NewRecorder()
+
+	router := mux.NewRouter()
+	router.HandleFunc("/api/v1/documents/{id}/optimized", handler.GetOptimizedDocument).Methods("GET")
+
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d. body=%s", http.StatusOK, rr.Code, rr.Body.String())
+	}
+
+	var opt domain.OptimizedDocument
+	if err := json.Unmarshal(rr.Body.Bytes(), &opt); err != nil {
+		t.Fatalf("failed to unmarshal response: %v. body=%s", err, rr.Body.String())
+	}
+
+	if opt.DocumentID != "doc1" {
+		t.Fatalf("expected document_id doc1, got %q", opt.DocumentID)
+	}
+	if opt.OptimizedVersion != 1 {
+		t.Fatalf("expected optimized_version 1, got %d", opt.OptimizedVersion)
+	}
+	if opt.OptimizedChecksumSHA256 == nil || *opt.OptimizedChecksumSHA256 == "" {
+		t.Fatalf("expected optimized_checksum_sha256 to be set")
+	}
+	if len(opt.Pages) == 0 {
+		t.Fatalf("expected pages to be present for partial response")
+	}
+	if opt.ProcessingStatus != "processing" {
+		t.Fatalf("expected processing_status processing, got %q", opt.ProcessingStatus)
 	}
 }
 

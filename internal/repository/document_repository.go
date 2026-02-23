@@ -329,11 +329,14 @@ func (r *DocumentRepository) GetOptimizedByID(documentID string, token string) (
 	opt := &domain.OptimizedDocument{
 		DocumentID:         doc.ID,
 		UserID:             doc.UserID,
+		OptimizedVersion:   1,
 		OptimizedSizeBytes: doc.OptimizedSizeBytes,
 		ProcessingStatus:   doc.ProcessingStatus,
 		ProcessedAt:        doc.ProcessedAt,
 	}
 	if doc.OptimizedChecksumSHA256 != nil {
+		opt.OptimizedChecksumSHA256 = doc.OptimizedChecksumSHA256
+		// Backwards-compatible alias.
 		opt.OptimizedChecksumSHA = doc.OptimizedChecksumSHA256
 	}
 	if len(doc.OptimizedContent) > 0 {

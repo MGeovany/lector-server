@@ -69,10 +69,13 @@ func main() {
 		authMiddleware.Middleware,
 	)
 
+	// Wrap with request logging so each request is logged (method, path, status).
+	handlerWithLogging := handler.LoggingMiddleware(container.Logger, router)
+
 	// start server
 	server := &http.Server{
 		Addr:              ":" + container.Config.GetServerPort(),
-		Handler:           router,
+		Handler:           handlerWithLogging,
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
