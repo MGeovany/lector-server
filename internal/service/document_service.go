@@ -302,7 +302,7 @@ func (s *DocumentService) Upload(
 			)
 		}
 	} else {
-		// For larger files, create document first and process in background
+		// For larger files, create document with placeholder; a single background worker (started after Create) will run processAndUpdate
 		contentJSON = json.RawMessage("[]")
 		metadata = domain.DocumentMetadata{
 			OriginalTitle: originalName,
@@ -310,58 +310,6 @@ func (s *DocumentService) Upload(
 			Format:        format,
 			Source:        "upload",
 		}
-
-		// Process in background goroutine
-		go func() {
-			blocks, pdfMetadata, err := s.pdfProcessor.ProcessPDF(fileBytes)
-			if err != nil {
-				s.logger.Error("Failed to process PDF in background", err, "doc_id", docID)
-				return
-			}
-
-			contentJSON, err := s.pdfProcessor.ConvertToJSON(blocks)
-			if err != nil {
-				s.logger.Error("Failed to convert blocks to JSON in background", err, "doc_id", docID)
-				return
-			}
-
-			// Determine title
-			docTitle := originalName
-			if pdfMetadata.Title != "" {
-				docTitle = pdfMetadata.Title
-			}
-
-			// Update document with processed content
-			updatedDoc := &domain.DocumentData{
-				ID:      docID,
-				UserID:  userID,
-				Title:   docTitle,
-				Content: contentJSON,
-				Metadata: domain.DocumentMetadata{
-					OriginalTitle:  originalName,
-					OriginalAuthor: pdfMetadata.Author,
-					PageCount:      pdfMetadata.PageCount,
-					HasPassword:    pdfMetadata.HasPassword,
-					FileSize:       totalSize,
-					Format:         "pdf",
-					Source:         "upload",
-				},
-				UpdatedAt: time.Now().UTC(),
-			}
-
-			if err := s.repo.Update(updatedDoc, token); err != nil {
-				s.logger.Error("Failed to update document with processed content", err, "doc_id", docID)
-				return
-			}
-
-			s.logger.Info("DocumentData processed in background",
-				"doc_id", docID,
-				"blocks_count", len(blocks),
-				"page_count", pdfMetadata.PageCount,
-			)
-		}()
-
-		s.logger.Info("DocumentData created, processing in background", "doc_id", docID, "file_size", totalSize)
 	}
 
 	// Set author from PDF metadata if available, otherwise leave nil
