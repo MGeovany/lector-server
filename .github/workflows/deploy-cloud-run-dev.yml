@@ -31,6 +31,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Validate required variables
+        run: |
+          if [ -z "${{ env.GCP_PROJECT_ID }}" ]; then
+            echo "::error::GCP_PROJECT_ID is not set. Add it in GitHub: Settings → Secrets and variables → Actions → Variables (or in the 'dev' environment)."
+            exit 1
+          fi
+          if [ -z "${{ env.REGION }}" ] || [ -z "${{ env.REPO }}" ] || [ -z "${{ env.SERVICE }}" ]; then
+            echo "::error::One of REGION, GCP_ARTIFACT_REPO, or CLOUD_RUN_SERVICE is not set. Check repository/environment variables."
+            exit 1
+          fi
+
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
