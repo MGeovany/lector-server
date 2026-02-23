@@ -156,10 +156,9 @@ func (r *AIRepository) SearchSimilar(ctx context.Context, documentID string, que
 	// The user reported: assignment mismatch: 2 variables but client.Rpc returns 1 value.
 	resp := client.Rpc("match_page_embeddings", "", params)
 
-	// We assume empty response might mean error or empty list?
-	// Typically libraries returning 1 value might panic on error or we check if response is valid JSON.
+	// For search semantics, treat an empty response as "no results" rather than an error.
 	if resp == "" {
-		return nil, fmt.Errorf("rpc returned empty response")
+		return []domain.SearchResult{}, nil
 	}
 
 	var results []struct {

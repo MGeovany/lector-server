@@ -57,8 +57,19 @@ func NewRouter(
 	// Get lightweight optimized pages by ID (offline-first)
 	protected.HandleFunc("/documents/{id}/optimized", documentHandler.GetOptimizedDocument).Methods(http.MethodGet)
 
-	// Ingest document for AI (generate embeddings)
-	protected.HandleFunc("/documents/{id}/ingest", aiHandler.Ingest).Methods(http.MethodPost)
+	// Ask AI routes: nil-safe so router can be built when AIService is unavailable (e.g. in tests).
+	var ingestHandler, askHandler, chatHistoryHandler http.HandlerFunc
+	if aiHandler != nil {
+		ingestHandler = aiHandler.Ingest
+		askHandler = aiHandler.Ask
+		chatHistoryHandler = aiHandler.GetChatHistory
+	} else {
+		unavailable := func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "AI service unavailable", http.StatusServiceUnavailable)
+		}
+		ingestHandler, askHandler, chatHistoryHandler = unavailable, unavailable, unavailable
+	}
+	protected.HandleFunc("/documents/{id}/ingest", ingestHandler).Methods(http.MethodPost)
 	// Update doc by ID
 	protected.HandleFunc("/documents/{id}", documentHandler.UpdateDocument).Methods(http.MethodPut)
 
@@ -103,8 +114,8 @@ func NewRouter(
 	protected.HandleFunc("/highlights/{id}", highlightHandler.DeleteHighlight).Methods(http.MethodDelete)
 
 	// Ask AI
-	protected.HandleFunc("/ask-ai", aiHandler.Ask).Methods(http.MethodPost)
-	protected.HandleFunc("/chat/{id}", aiHandler.GetChatHistory).Methods(http.MethodGet)
+	protected.HandleFunc("/ask-ai", askHandler).Methods(http.MethodPost)
+	protected.HandleFunc("/chat/{id}", chatHistoryHandler).Methods(http.MethodGet)
 
 	// CORS
 	c := cors.New(cors.Options{
