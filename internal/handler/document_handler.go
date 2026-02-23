@@ -247,6 +247,21 @@ func (h *DocumentHandler) UploadDocument(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Validate content matches extension (magic numbers) to reject e.g. .pdf with non-PDF content
+	const sniffLen = 512
+	prefix := make([]byte, sniffLen)
+	n, err := io.ReadFull(file, prefix)
+	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+		h.writeError(w, http.StatusBadRequest, "Failed to read file")
+		return
+	}
+	prefix = prefix[:n]
+	if !h.contentMatchesExtension(prefix, ext) {
+		h.writeError(w, http.StatusBadRequest, "File content does not match its extension. Allowed: PDF (.pdf), EPUB (.epub), TXT (.txt), Markdown (.md).")
+		return
+	}
+	fileReader := io.MultiReader(bytes.NewReader(prefix), file)
+
 	token, ok := GetTokenFromContext(r)
 	if !ok {
 		h.writeError(w, http.StatusUnauthorized, "Token not found in context")
@@ -256,7 +271,7 @@ func (h *DocumentHandler) UploadDocument(w http.ResponseWriter, r *http.Request)
 	doc, err := h.documentService.Upload(
 		r.Context(),
 		user.ID,
-		file,
+		fileReader,
 		token,
 		originalName,
 	)
@@ -747,6 +762,21 @@ func (h *DocumentHandler) DeleteTag(w http.ResponseWriter, r *http.Request) {
 }
 
 // writeError writes an error response
+// contentMatchesExtension checks file magic numbers match the declared extension.
+// PDF: %PDF; EPUB: ZIP (PK); .txt/.md have no single magic, so we allow.
+func (h *DocumentHandler) contentMatchesExtension(prefix []byte, ext string) bool {
+	switch ext {
+	case ".pdf":
+		return len(prefix) >= 4 && string(prefix[:4]) == "%PDF"
+	case ".epub":
+		return len(prefix) >= 4 && prefix[0] == 0x50 && prefix[1] == 0x4B && prefix[2] == 0x03 && prefix[3] == 0x04 // ZIP local file header
+	case ".txt", ".md":
+		return true
+	default:
+		return false
+	}
+}
+
 func (h *DocumentHandler) writeError(w http.ResponseWriter, statusCode int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
