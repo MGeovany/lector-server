@@ -126,7 +126,7 @@ func (m *MockDocumentService) GetOptimizedDocument(documentID string, token stri
 			DocumentID:              documentID,
 			ProcessingStatus:        "processing",
 			Pages:                   []string{"page 1", "", "page 3"},
-			OptimizedVersion:        1,
+			OptimizedVersion:        domain.CurrentOptimizedPayloadVersion,
 			OptimizedChecksumSHA256: &sum,
 			OptimizedChecksumSHA:    &sum, // alias
 		}, nil
@@ -298,7 +298,7 @@ func TestDocumentHandler_GetDocument(t *testing.T) {
 	}
 }
 
-func TestDocumentHandler_GetOptimizedDocument_PartialIncludesIOSFields(t *testing.T) {
+func TestDocumentHandler_GetOptimizedDocument_PartialIncludesiOSFields(t *testing.T) {
 	docService := NewMockDocumentService()
 	prefService := NewMockUserPreferencesService()
 	logger := NewMockHandlerLogger()

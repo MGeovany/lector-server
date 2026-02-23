@@ -576,7 +576,7 @@ func (s *DocumentService) getOptimizedDocument(documentID string, token string, 
 	opt := &domain.OptimizedDocument{
 		DocumentID:         doc.ID,
 		UserID:             doc.UserID,
-		OptimizedVersion:   1,
+		OptimizedVersion:   domain.CurrentOptimizedPayloadVersion,
 		OptimizedSizeBytes: doc.OptimizedSizeBytes,
 		ProcessingStatus:   doc.ProcessingStatus,
 		ProcessedAt:        doc.ProcessedAt,
