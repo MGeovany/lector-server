@@ -284,30 +284,16 @@ func (s *AIService) Ask(ctx context.Context, userID string, req domain.ChatReque
 
 	historyMsgs, err := s.chatRepo.GetMessages(ctx, sessionID, token)
 	if err == nil {
-		for _, m := range historyMsgs {
+		for i, m := range historyMsgs {
+			// Exclude the current user message when it appears as the last message (e.g. GetMessages
+			// returned it after CreateMessage). We send it as the query below, so avoid duplicate.
+			if i == len(historyMsgs)-1 && m.Role == "user" && m.Content == req.Prompt {
+				continue
+			}
 			role := "user"
 			if m.Role == "model" {
 				role = "model"
 			}
-			if m.Content == req.Prompt && m.Role == "user" {
-				// avoid dup if we just inserted? No, query reads from db, but we just inserted.
-				// Chat repo usually doesn't have read-after-write consistency guaranteed if async?
-				// But here we might see it.
-				// If we see it, we skip duplicate of LAST message or current message?
-				// Better to trust GetMessages and if it includes current, great.
-				// But we are building history for context. Current message is added via SendMessage.
-				// So we should EXCLUDE current message from history passed to StartChat logic (if we were using history manually).
-				// StartChat() creates empty history.
-				// We populate chat.History.
-				// We should populate history up to BEFORE current message.
-				// If GetMessages includes current message, we skip it.
-				// How to identify? ID? Content match at end?
-				// Simple heuristic: if m.ID == userMsg.ID then skip.
-				if m.ID == userMsg.ID {
-					continue
-				}
-			}
-
 			chat.History = append(chat.History, &genai.Content{
 				Role: role,
 				Parts: []genai.Part{
