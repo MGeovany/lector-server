@@ -17,7 +17,7 @@ permissions:
   id-token: write
 
 env:
-  GCP_PROJECT_ID: ${{ vars.GCP_GCP_PROJECT_ID }}
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
   REGION: ${{ vars.GCP_REGION }}
   REPO: ${{ vars.GCP_ARTIFACT_REPO }}
   # Dev service name: same base as prod with -dev (e.g. reader-go -> reader-go-dev)

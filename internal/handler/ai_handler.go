@@ -26,7 +26,7 @@ func NewAIHandler(aiService domain.AIService, logger domain.Logger) *AIHandler {
 // Ingest handles document ingestion (embedding generation)
 func (h *AIHandler) Ingest(w http.ResponseWriter, r *http.Request) {
 	if h.aiService == nil || (interface{})(h.aiService) == nil {
-		writeError(w, http.StatusServiceUnavailable, "AI Service not configured (missing GCP_GCP_PROJECT_ID or credentials)")
+		writeError(w, http.StatusServiceUnavailable, "AI Service not configured (missing GCP_PROJECT_ID or credentials)")
 		return
 	}
 
@@ -70,7 +70,7 @@ func (h *AIHandler) Ingest(w http.ResponseWriter, r *http.Request) {
 // Ask handles chat queries
 func (h *AIHandler) Ask(w http.ResponseWriter, r *http.Request) {
 	if h.aiService == nil || (interface{})(h.aiService) == nil {
-		writeError(w, http.StatusServiceUnavailable, "AI Service not configured (missing GCP_GCP_PROJECT_ID or credentials)")
+		writeError(w, http.StatusServiceUnavailable, "AI Service not configured (missing GCP_PROJECT_ID or credentials)")
 		return
 	}
 
@@ -130,7 +130,7 @@ func (h *AIHandler) Ask(w http.ResponseWriter, r *http.Request) {
 // GetChatHistory handles retrieving chat history
 func (h *AIHandler) GetChatHistory(w http.ResponseWriter, r *http.Request) {
 	if h.aiService == nil || (interface{})(h.aiService) == nil {
-		writeError(w, http.StatusServiceUnavailable, "AI Service not configured (missing GCP_GCP_PROJECT_ID or credentials)")
+		writeError(w, http.StatusServiceUnavailable, "AI Service not configured (missing GCP_PROJECT_ID or credentials)")
 		return
 	}
 

@@ -14,7 +14,7 @@ permissions:
 
 env:
   # Prefer GitHub "Repository Variables" for these (Settings -> Secrets and variables -> Actions -> Variables)
-  GCP_PROJECT_ID: ${{ vars.GCP_GCP_PROJECT_ID }}
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
   REGION: ${{ vars.GCP_REGION }}
   REPO: ${{ vars.GCP_ARTIFACT_REPO }}
   SERVICE: ${{ vars.CLOUD_RUN_SERVICE }}
