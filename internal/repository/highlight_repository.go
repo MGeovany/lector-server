@@ -185,4 +185,3 @@ func sanitizeText(s string) string {
 	s = strings.ReplaceAll(s, "\u0000", "")
 	return s
 }
-

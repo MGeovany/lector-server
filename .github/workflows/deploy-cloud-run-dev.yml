@@ -1,11 +1,15 @@
-name: Deploy to Cloud Run (reader-go)
+# Deploy to Cloud Run **dev** (separate service from prod).
+# Trigger: push to branch `dev`.
+# Prod stays on `main` (deploy-cloud-run.yml).
+
+name: Deploy to Cloud Run (dev)
 
 on:
   push:
-    branches: ["main"]
+    branches: ["dev"]
 
 concurrency:
-  group: cloud-run-main
+  group: cloud-run-dev
   cancel-in-progress: true
 
 permissions:
@@ -13,18 +17,16 @@ permissions:
   id-token: write
 
 env:
-  # Prefer GitHub "Repository Variables" for these (Settings -> Secrets and variables -> Actions -> Variables)
   GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
   REGION: ${{ vars.GCP_REGION }}
   REPO: ${{ vars.GCP_ARTIFACT_REPO }}
-  SERVICE: ${{ vars.CLOUD_RUN_SERVICE }}
+  # Dev service name: same base as prod with -dev (e.g. reader-go -> reader-go-dev)
+  SERVICE: ${{ vars.CLOUD_RUN_SERVICE }}-dev
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    # Optional but recommended: use a GitHub "Environment" named "prd"
-    # so you can scope secrets/vars and add approvals.
-    environment: prd
+    environment: dev
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,7 +34,7 @@ jobs:
       - name: Validate required variables
         run: |
           if [ -z "${{ env.GCP_PROJECT_ID }}" ]; then
-            echo "::error::GCP_PROJECT_ID is not set. Add it in GitHub: Settings → Secrets and variables → Actions → Variables (or in the 'prd' environment)."
+            echo "::error::GCP_PROJECT_ID is not set. Add it in GitHub: Settings → Secrets and variables → Actions → Variables (or in the 'dev' environment)."
             exit 1
           fi
           if [ -z "${{ env.REGION }}" ] || [ -z "${{ env.REPO }}" ] || [ -z "${{ env.SERVICE }}" ]; then
@@ -40,7 +42,6 @@ jobs:
             exit 1
           fi
 
-      # Recommended: Workload Identity Federation (no service account key in GitHub)
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
@@ -62,7 +63,7 @@ jobs:
           docker build -t "$IMAGE" .
           docker push "$IMAGE"
 
-      - name: Deploy to Cloud Run (public network, auth via Supabase JWT)
+      - name: Deploy to Cloud Run (dev)
         env:
           IMAGE: ${{ env.REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.REPO }}/${{ env.SERVICE }}:${{ github.sha }}
         run: |
@@ -73,4 +74,3 @@ jobs:
             --allow-unauthenticated \
             --set-env-vars "SUPABASE_URL=${{ secrets.SUPABASE_URL }},SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }},JWT_SECRET=${{ secrets.JWT_SECRET }}" \
             --quiet
-

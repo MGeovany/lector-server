@@ -83,6 +83,25 @@ type Document struct {
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+
+	// Optimized/processing fields (optional; used for offline-first optimized payload)
+	OptimizedContent        json.RawMessage `json:"optimized_content,omitempty"`
+	OptimizedSizeBytes      *int64          `json:"optimized_size_bytes,omitempty"`
+	OptimizedChecksumSHA256 *string         `json:"optimized_checksum_sha256,omitempty"`
+	ProcessingStatus        string          `json:"processing_status,omitempty"`
+	ProcessedAt             *time.Time      `json:"processed_at,omitempty"`
+	ProcessingError         *string         `json:"processing_error,omitempty"`
+}
+
+// OptimizedDocument is the lightweight response for offline-first clients (optimized endpoint).
+type OptimizedDocument struct {
+	DocumentID           string     `json:"document_id,omitempty"`
+	UserID               string     `json:"user_id,omitempty"`
+	Pages                []string   `json:"pages,omitempty"`
+	OptimizedSizeBytes   *int64     `json:"optimized_size_bytes,omitempty"`
+	OptimizedChecksumSHA *string    `json:"optimized_checksum_sha,omitempty"`
+	ProcessingStatus     string     `json:"processing_status,omitempty"`
+	ProcessedAt          *time.Time `json:"processed_at,omitempty"`
 }
 
 // Validate checks if the document has all required fields and valid values.
@@ -132,6 +151,7 @@ type DocumentRepository interface {
 
 	// Favorites
 	SetFavorite(userID string, documentID string, isFavorite bool, token string) error
+	GetOptimizedByID(documentID string, token string) (*OptimizedDocument, error)
 }
 
 // DocumentService defines the use-case operations for documents.
@@ -159,4 +179,6 @@ type DocumentService interface {
 		token string,
 		originalName string,
 	) (*DocumentData, error)
+	GetOptimizedDocument(documentID string, token string) (*OptimizedDocument, error)
+	GetOptimizedDocumentMeta(documentID string, token string) (*OptimizedDocument, error)
 }

@@ -13,6 +13,7 @@ func NewRouter(
 	documentHandler *DocumentHandler,
 	preferenceHandler *PreferenceHandler,
 	highlightHandler *HighlightHandler,
+	aiHandler *AIHandler,
 	authMiddleware func(http.Handler) http.Handler,
 
 ) http.Handler {
@@ -53,6 +54,22 @@ func NewRouter(
 	// Get doc data by ID
 	protected.HandleFunc("/documents/{id}", documentHandler.GetDocument).Methods(http.MethodGet)
 
+	// Get lightweight optimized pages by ID (offline-first)
+	protected.HandleFunc("/documents/{id}/optimized", documentHandler.GetOptimizedDocument).Methods(http.MethodGet)
+
+	// Ask AI routes: nil-safe so router can be built when AIService is unavailable (e.g. in tests).
+	var ingestHandler, askHandler, chatHistoryHandler http.HandlerFunc
+	if aiHandler != nil {
+		ingestHandler = aiHandler.Ingest
+		askHandler = aiHandler.Ask
+		chatHistoryHandler = aiHandler.GetChatHistory
+	} else {
+		unavailable := func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "AI service unavailable", http.StatusServiceUnavailable)
+		}
+		ingestHandler, askHandler, chatHistoryHandler = unavailable, unavailable, unavailable
+	}
+	protected.HandleFunc("/documents/{id}/ingest", ingestHandler).Methods(http.MethodPost)
 	// Update doc by ID
 	protected.HandleFunc("/documents/{id}", documentHandler.UpdateDocument).Methods(http.MethodPut)
 
@@ -95,6 +112,10 @@ func NewRouter(
 	protected.HandleFunc("/highlights", highlightHandler.ListHighlights).Methods(http.MethodGet)
 	protected.HandleFunc("/highlights", highlightHandler.CreateHighlight).Methods(http.MethodPost)
 	protected.HandleFunc("/highlights/{id}", highlightHandler.DeleteHighlight).Methods(http.MethodDelete)
+
+	// Ask AI
+	protected.HandleFunc("/ask-ai", askHandler).Methods(http.MethodPost)
+	protected.HandleFunc("/chat/{id}", chatHistoryHandler).Methods(http.MethodGet)
 
 	// CORS
 	c := cors.New(cors.Options{

@@ -3,14 +3,16 @@ package service
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"pdf-text-reader/internal/domain"
-
-	"encoding/json"
 
 	"github.com/google/uuid"
 )
@@ -191,8 +193,17 @@ func (s *DocumentService) Upload(
 	}
 
 	docID := uuid.New().String()
+
+	ext := strings.ToLower(filepath.Ext(originalName))
+	if ext == "" {
+		ext = ".pdf"
+	}
+	format := strings.TrimPrefix(ext, ".")
+	if format == "markdown" {
+		format = "md"
+	}
 	// Path should be relative to bucket, not include bucket name
-	path := fmt.Sprintf("%s/%s.pdf", userID, docID)
+	path := fmt.Sprintf("%s/%s%s", userID, docID, ext)
 
 	// Read file to get size and content
 	fileBytes := make([]byte, 0)
@@ -235,7 +246,7 @@ func (s *DocumentService) Upload(
 
 	// Use original filename or generate one
 	if originalName == "" {
-		originalName = docID + ".pdf"
+		originalName = docID + ext
 	}
 
 	// Process PDF to extract text and metadata
@@ -253,7 +264,12 @@ func (s *DocumentService) Upload(
 		if err != nil {
 			s.logger.Error("Failed to process PDF", err, "doc_id", docID)
 			contentJSON = json.RawMessage("[]")
-			metadata = domain.DocumentMetadata{}
+			metadata = domain.DocumentMetadata{
+				OriginalTitle: originalName,
+				FileSize:      totalSize,
+				Format:        format,
+				Source:        "upload",
+			}
 		} else {
 			contentJSON, err = s.pdfProcessor.ConvertToJSON(blocks)
 			if err != nil {
@@ -272,6 +288,7 @@ func (s *DocumentService) Upload(
 				HasPassword:    pdfMetadata.HasPassword,
 				FileSize:       totalSize,
 				Format:         "pdf",
+				Source:         "upload",
 			}
 
 			s.logger.Info("DocumentData processed synchronously",
@@ -281,60 +298,14 @@ func (s *DocumentService) Upload(
 			)
 		}
 	} else {
-		// For larger files, create document first and process in background
+		// For larger files, create document with placeholder; a single background worker (started after Create) will run processAndUpdate
 		contentJSON = json.RawMessage("[]")
-		metadata = domain.DocumentMetadata{}
-
-		// Process in background goroutine
-		go func() {
-			blocks, pdfMetadata, err := s.pdfProcessor.ProcessPDF(fileBytes)
-			if err != nil {
-				s.logger.Error("Failed to process PDF in background", err, "doc_id", docID)
-				return
-			}
-
-			contentJSON, err := s.pdfProcessor.ConvertToJSON(blocks)
-			if err != nil {
-				s.logger.Error("Failed to convert blocks to JSON in background", err, "doc_id", docID)
-				return
-			}
-
-			// Determine title
-			docTitle := originalName
-			if pdfMetadata.Title != "" {
-				docTitle = pdfMetadata.Title
-			}
-
-			// Update document with processed content
-			updatedDoc := &domain.DocumentData{
-				ID:      docID,
-				UserID:  userID,
-				Title:   docTitle,
-				Content: contentJSON,
-				Metadata: domain.DocumentMetadata{
-					OriginalTitle:  originalName,
-					OriginalAuthor: pdfMetadata.Author,
-					PageCount:      pdfMetadata.PageCount,
-					HasPassword:    pdfMetadata.HasPassword,
-					FileSize:       totalSize,
-					Format:         "pdf",
-				},
-				UpdatedAt: time.Now().UTC(),
-			}
-
-			if err := s.repo.Update(updatedDoc, token); err != nil {
-				s.logger.Error("Failed to update document with processed content", err, "doc_id", docID)
-				return
-			}
-
-			s.logger.Info("DocumentData processed in background",
-				"doc_id", docID,
-				"blocks_count", len(blocks),
-				"page_count", pdfMetadata.PageCount,
-			)
-		}()
-
-		s.logger.Info("DocumentData created, processing in background", "doc_id", docID, "file_size", totalSize)
+		metadata = domain.DocumentMetadata{
+			OriginalTitle: originalName,
+			FileSize:      totalSize,
+			Format:        format,
+			Source:        "upload",
+		}
 	}
 
 	// Set author from PDF metadata if available, otherwise leave nil
@@ -369,5 +340,253 @@ func (s *DocumentService) Upload(
 		return nil, err
 	}
 
+	processAndUpdate := func(target *domain.DocumentData) {
+		switch format {
+		case "pdf":
+			// Build an initial placeholder optimized array so the client can open quickly.
+			// We'll fill pages as we process them and write intermediate updates.
+			var optimizedPages []string
+			lastIntermediateUpdatePage := 0
+
+			blocks, pdfMetadata, err := s.pdfProcessor.ProcessPDFWithCallbacks(
+				fileBytes,
+				func(meta PDFMetadata) {
+					// Pre-size so partial payload keeps correct total page count.
+					if meta.PageCount > 0 {
+						optimizedPages = make([]string, meta.PageCount)
+						target.Metadata.PageCount = meta.PageCount
+					}
+				},
+				func(pageNumber int, pageText string) {
+					if optimizedPages == nil {
+						optimizedPages = make([]string, 0)
+					}
+					idx := pageNumber - 1
+					for len(optimizedPages) <= idx {
+						optimizedPages = append(optimizedPages, "")
+					}
+					optimizedPages[idx] = pageText
+
+					// Throttle intermediate DB writes.
+					if pageNumber == 1 || pageNumber-lastIntermediateUpdatePage >= 12 {
+						lastIntermediateUpdatePage = pageNumber
+						if b, err := json.Marshal(optimizedPages); err == nil {
+							// Update just the optimized content + status; keep content empty until the end.
+							target.OptimizedContent = json.RawMessage(b)
+							size := int64(len(b))
+							sum := sha256.Sum256(b)
+							checksum := hex.EncodeToString(sum[:])
+							target.OptimizedSizeBytes = &size
+							target.OptimizedChecksumSHA256 = &checksum
+							target.ProcessingStatus = "processing"
+							target.UpdatedAt = time.Now().UTC()
+							_ = s.repo.Update(target, token)
+						}
+					}
+				},
+			)
+			if err != nil {
+				s.logger.Error("Failed to process PDF", err, "doc_id", docID)
+				msg := err.Error()
+				target.ProcessingStatus = "failed"
+				target.ProcessingError = &msg
+				target.UpdatedAt = time.Now().UTC()
+				if err := s.repo.Update(target, token); err != nil {
+					s.logger.Error("Failed to update document after processing failure", err, "doc_id", docID)
+				}
+				return
+			}
+
+			// Ensure optimizedPages length matches the PDF page count.
+			if pdfMetadata.PageCount > 0 {
+				if optimizedPages == nil {
+					optimizedPages = make([]string, pdfMetadata.PageCount)
+				} else if len(optimizedPages) < pdfMetadata.PageCount {
+					for len(optimizedPages) < pdfMetadata.PageCount {
+						optimizedPages = append(optimizedPages, "")
+					}
+				}
+			}
+
+			contentJSON, err := s.pdfProcessor.ConvertToJSON(blocks)
+			if err != nil {
+				s.logger.Error("Failed to convert blocks to JSON", err, "doc_id", docID)
+				contentJSON = json.RawMessage("[]")
+			}
+
+			optimizedJSON, err := s.pdfProcessor.ConvertToOptimizedPagesJSON(blocks, pdfMetadata.PageCount)
+			if err != nil {
+				s.logger.Error("Failed to convert blocks to optimized pages JSON", err, "doc_id", docID)
+				optimizedJSON = json.RawMessage("[]")
+			}
+
+			// Prefer PDF title when present.
+			if pdfMetadata.Title != "" {
+				target.Title = pdfMetadata.Title
+			}
+			// Author from PDF metadata.
+			if pdfMetadata.Author != "" {
+				a := pdfMetadata.Author
+				target.Author = &a
+				target.Metadata.OriginalAuthor = pdfMetadata.Author
+			}
+			target.Metadata.PageCount = pdfMetadata.PageCount
+			target.Metadata.HasPassword = pdfMetadata.HasPassword
+
+			// Optimized checksums/sizes
+			optSize := int64(len(optimizedJSON))
+			optSum := sha256.Sum256([]byte(optimizedJSON))
+			optChecksum := hex.EncodeToString(optSum[:])
+			target.OptimizedContent = optimizedJSON
+			target.OptimizedSizeBytes = &optSize
+			target.OptimizedChecksumSHA256 = &optChecksum
+
+			target.Content = contentJSON
+			processedAt := time.Now().UTC()
+			target.ProcessedAt = &processedAt
+			target.ProcessingStatus = "ready"
+			target.ProcessingError = nil
+			target.UpdatedAt = processedAt
+
+			if err := s.repo.Update(target, token); err != nil {
+				s.logger.Error("Failed to update document with processed content", err, "doc_id", docID)
+				return
+			}
+
+			readyPages := 0
+			for _, s := range optimizedPages {
+				if strings.TrimSpace(s) != "" {
+					readyPages++
+				}
+			}
+			s.logger.Info("[Doc] Document processed",
+				"doc_id", docID,
+				"blocks_count", len(blocks),
+				"page_count", pdfMetadata.PageCount,
+				"pages_with_text", readyPages,
+			)
+			if pdfMetadata.PageCount > 0 && readyPages == 0 {
+				s.logger.Warn("[Doc] Document has no extractable text; likely scanned/image-only PDF", "doc_id", docID, "page_count", pdfMetadata.PageCount)
+			}
+			return
+
+		case "txt", "md", "epub":
+			extracted, err := ExtractTextDocument(format, originalName, fileBytes)
+			if err != nil {
+				s.logger.Error("Failed to extract text document", err, "doc_id", docID, "format", format)
+				msg := err.Error()
+				target.ProcessingStatus = "failed"
+				target.ProcessingError = &msg
+				target.UpdatedAt = time.Now().UTC()
+				_ = s.repo.Update(target, token)
+				return
+			}
+
+			blocks, pageCount, wordCount := BuildTextBlocksFromText(s.pdfProcessor, extracted.Text)
+			contentJSON, err := s.pdfProcessor.ConvertToJSON(blocks)
+			if err != nil {
+				s.logger.Error("Failed to convert blocks to JSON", err, "doc_id", docID)
+				contentJSON = json.RawMessage("[]")
+			}
+
+			optimizedJSON, err := s.pdfProcessor.ConvertToOptimizedPagesJSON(blocks, pageCount)
+			if err != nil {
+				s.logger.Error("Failed to convert blocks to optimized pages JSON", err, "doc_id", docID)
+				optimizedJSON = json.RawMessage("[]")
+			}
+
+			if extracted.Title != "" {
+				target.Title = extracted.Title
+			}
+			if extracted.Author != "" {
+				a := extracted.Author
+				target.Author = &a
+				target.Metadata.OriginalAuthor = extracted.Author
+			}
+			target.Metadata.PageCount = pageCount
+			target.Metadata.WordCount = wordCount
+			target.Metadata.HasPassword = false
+
+			optSize := int64(len(optimizedJSON))
+			optSum := sha256.Sum256([]byte(optimizedJSON))
+			optChecksum := hex.EncodeToString(optSum[:])
+			target.OptimizedContent = optimizedJSON
+			target.OptimizedSizeBytes = &optSize
+			target.OptimizedChecksumSHA256 = &optChecksum
+
+			target.Content = contentJSON
+			processedAt := time.Now().UTC()
+			target.ProcessedAt = &processedAt
+			target.ProcessingStatus = "ready"
+			target.ProcessingError = nil
+			target.UpdatedAt = processedAt
+
+			if err := s.repo.Update(target, token); err != nil {
+				s.logger.Error("Failed to update document with processed content", err, "doc_id", docID)
+				return
+			}
+
+			s.logger.Info("Document processed",
+				"doc_id", docID,
+				"blocks_count", len(blocks),
+				"page_count", pageCount,
+				"format", format,
+			)
+			return
+
+		default:
+			msg := fmt.Sprintf("unsupported format: %s", format)
+			target.ProcessingStatus = "failed"
+			target.ProcessingError = &msg
+			target.UpdatedAt = time.Now().UTC()
+			_ = s.repo.Update(target, token)
+			return
+		}
+	}
+
+	if totalSize < asyncThreshold {
+		processAndUpdate(doc)
+		return doc, nil
+	}
+
+	// IMPORTANT: avoid mutating the response object after returning.
+	// Create an independent copy for background processing.
+	backgroundDoc := *doc
+	go processAndUpdate(&backgroundDoc)
+	s.logger.Info("Document created; processing in background", "doc_id", docID, "file_size", totalSize)
 	return doc, nil
+}
+
+// GetOptimizedDocument returns the optimized document with pages for offline-first clients.
+func (s *DocumentService) GetOptimizedDocument(documentID string, token string) (*domain.OptimizedDocument, error) {
+	return s.getOptimizedDocument(documentID, token, true)
+}
+
+// GetOptimizedDocumentMeta returns optimized document metadata without page content.
+func (s *DocumentService) GetOptimizedDocumentMeta(documentID string, token string) (*domain.OptimizedDocument, error) {
+	return s.getOptimizedDocument(documentID, token, false)
+}
+
+func (s *DocumentService) getOptimizedDocument(documentID string, token string, includePages bool) (*domain.OptimizedDocument, error) {
+	doc, err := s.repo.GetByID(documentID, token)
+	if err != nil {
+		return nil, err
+	}
+	opt := &domain.OptimizedDocument{
+		DocumentID:         doc.ID,
+		UserID:             doc.UserID,
+		OptimizedSizeBytes: doc.OptimizedSizeBytes,
+		ProcessingStatus:   doc.ProcessingStatus,
+		ProcessedAt:        doc.ProcessedAt,
+	}
+	if doc.OptimizedChecksumSHA256 != nil {
+		opt.OptimizedChecksumSHA = doc.OptimizedChecksumSHA256
+	}
+	if includePages && len(doc.OptimizedContent) > 0 {
+		var pages []string
+		if err := json.Unmarshal(doc.OptimizedContent, &pages); err == nil {
+			opt.Pages = pages
+		}
+	}
+	return opt, nil
 }

@@ -119,6 +119,21 @@ func (m *MockDocumentService) Upload(ctx context.Context, userID string, file io
 	return doc, nil
 }
 
+func (m *MockDocumentService) GetOptimizedDocument(documentID string, token string) (*domain.OptimizedDocument, error) {
+	if _, exists := m.documents[documentID]; exists {
+		return &domain.OptimizedDocument{
+			DocumentID:       documentID,
+			ProcessingStatus: "ready",
+			Pages:            []string{},
+		}, nil
+	}
+	return nil, domain.ErrDocumentNotFound
+}
+
+func (m *MockDocumentService) GetOptimizedDocumentMeta(documentID string, token string) (*domain.OptimizedDocument, error) {
+	return m.GetOptimizedDocument(documentID, token)
+}
+
 type MockUserPreferencesService struct {
 	preferences map[string]*domain.UserPreferences
 	positions   map[string]map[string]*domain.ReadingPosition

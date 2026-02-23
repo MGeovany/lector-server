@@ -4,14 +4,14 @@
 #     --substitutions _REGION=us-central1,_REPO=services,_SERVICE=reader-go
 #
 # Prereqs:
-# - Artifact Registry repo exists: ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}
+# - Artifact Registry repo exists: ${_REGION}-docker.pkg.dev/$GCP_PROJECT_ID/${_REPO}
 # - Cloud Run API enabled
 
 substitutions:
   _REGION: us-central1
   _REPO: services
   _SERVICE: reader-go
-  _IMAGE: '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA'
+  _IMAGE: '${_REGION}-docker.pkg.dev/$GCP_PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA'
 
 steps:
   - name: 'gcr.io/cloud-builders/docker'

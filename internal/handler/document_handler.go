@@ -2,9 +2,13 @@
 package handler
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"pdf-text-reader/internal/domain"
 
@@ -218,11 +222,45 @@ func (h *DocumentHandler) UploadDocument(w http.ResponseWriter, r *http.Request)
 	}
 	defer file.Close()
 
+	// Sanitize filename (strip any path components)
+	originalName := strings.TrimSpace(filepath.Base(header.Filename))
+	if originalName == "" || originalName == "." || originalName == string(filepath.Separator) {
+		originalName = "document"
+	}
+
+	// Validate extension (strict allow-list)
+	ext := strings.ToLower(filepath.Ext(originalName))
+	allowedExt := map[string]bool{
+		".pdf":  true,
+		".epub": true,
+		".txt":  true,
+		".md":   true,
+	}
+	if ext == "" || !allowedExt[ext] {
+		h.writeError(w, http.StatusBadRequest, "Unsupported file type. Allowed: PDF (.pdf), EPUB (.epub), TXT (.txt), Markdown (.md).")
+		return
+	}
+
 	// Validate file size
 	if header.Size > 15<<20 { // 15MB single file limit
 		h.writeError(w, http.StatusBadRequest, "File too large. Maximum single file size is 15MB.")
 		return
 	}
+
+	// Validate content matches extension (magic numbers) to reject e.g. .pdf with non-PDF content
+	const sniffLen = 512
+	prefix := make([]byte, sniffLen)
+	n, err := io.ReadFull(file, prefix)
+	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+		h.writeError(w, http.StatusBadRequest, "Failed to read file")
+		return
+	}
+	prefix = prefix[:n]
+	if !h.contentMatchesExtension(prefix, ext) {
+		h.writeError(w, http.StatusBadRequest, "File content does not match its extension. Allowed: PDF (.pdf), EPUB (.epub), TXT (.txt), Markdown (.md).")
+		return
+	}
+	fileReader := io.MultiReader(bytes.NewReader(prefix), file)
 
 	token, ok := GetTokenFromContext(r)
 	if !ok {
@@ -233,9 +271,9 @@ func (h *DocumentHandler) UploadDocument(w http.ResponseWriter, r *http.Request)
 	doc, err := h.documentService.Upload(
 		r.Context(),
 		user.ID,
-		file,
+		fileReader,
 		token,
-		header.Filename,
+		originalName,
 	)
 	if err != nil {
 		// If the error message mentions storage limit, return 400 with friendly text
@@ -353,6 +391,109 @@ func (h *DocumentHandler) GetDocument(w http.ResponseWriter, r *http.Request) {
 	// Clean the document content before returning
 	cleanDoc := h.cleanDocumentForResponse(document)
 	h.writeJSON(w, http.StatusOK, cleanDoc)
+}
+
+// GetOptimizedDocument returns the lightweight page array used by offline-first clients.
+// - 200: processing_status=ready + pages
+// - 202: not ready yet
+// - 304: If-None-Match matches optimized checksum
+func (h *DocumentHandler) GetOptimizedDocument(w http.ResponseWriter, r *http.Request) {
+	user, ok := GetUserFromContext(r)
+	if !ok {
+		h.writeError(w, http.StatusUnauthorized, "User not found in context")
+		return
+	}
+
+	vars := mux.Vars(r)
+	documentID := vars["id"]
+	if documentID == "" {
+		h.writeError(w, http.StatusBadRequest, "Document ID is required")
+		return
+	}
+
+	token, ok := GetTokenFromContext(r)
+	if !ok {
+		h.writeError(w, http.StatusUnauthorized, "Token not found in context")
+		return
+	}
+
+	includePages := true
+	if raw := strings.TrimSpace(r.URL.Query().Get("include_pages")); raw != "" {
+		if raw == "0" || strings.EqualFold(raw, "false") {
+			includePages = false
+		}
+	}
+	h.logger.Info("[Doc] GetOptimizedDocument request", "document_id", documentID, "include_pages", includePages)
+
+	var opt *domain.OptimizedDocument
+	var err error
+	if includePages {
+		opt, err = h.documentService.GetOptimizedDocument(documentID, token)
+	} else {
+		opt, err = h.documentService.GetOptimizedDocumentMeta(documentID, token)
+	}
+	if err != nil {
+		h.logger.Error("GetOptimizedDocument failed", err, "document_id", documentID)
+		h.writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	pageCount := 0
+	readyCount := 0
+	if opt.Pages != nil {
+		pageCount = len(opt.Pages)
+		for _, p := range opt.Pages {
+			if strings.TrimSpace(p) != "" {
+				readyCount++
+			}
+		}
+	}
+	optSize := int64(0)
+	if opt.OptimizedSizeBytes != nil {
+		optSize = *opt.OptimizedSizeBytes
+	}
+	h.logger.Info("[Doc] GetOptimizedDocument response", "document_id", documentID, "processing_status", opt.ProcessingStatus, "pages_ready", readyCount, "pages_total", pageCount, "optimized_size_bytes", optSize)
+	if pageCount > 0 && readyCount == 0 && opt.ProcessingStatus == "ready" {
+		h.logger.Warn("[Doc] GetOptimizedDocument returning ready but no page content (empty/scanned PDF?)", "document_id", documentID, "pages_total", pageCount)
+	}
+	if opt.UserID != "" && opt.UserID != user.ID {
+		h.writeError(w, http.StatusForbidden, "Access denied")
+		return
+	}
+
+	// ETag support.
+	if opt.OptimizedChecksumSHA != nil && *opt.OptimizedChecksumSHA != "" {
+		etag := "\"" + *opt.OptimizedChecksumSHA + "\""
+		w.Header().Set("ETag", etag)
+		if inm := strings.TrimSpace(r.Header.Get("If-None-Match")); inm != "" {
+			if inm == etag || strings.Trim(inm, "\"") == *opt.OptimizedChecksumSHA {
+				h.logger.Info("GetOptimizedDocument 304 not modified", "document_id", documentID)
+				w.WriteHeader(http.StatusNotModified)
+				return
+			}
+		}
+	}
+
+	// If we already have some pages, return them even while processing.
+	if opt.ProcessingStatus != "ready" {
+		hasPages := includePages && len(opt.Pages) > 0
+		if hasPages {
+			h.logger.Info("GetOptimizedDocument 200 partial", "document_id", documentID, "status", opt.ProcessingStatus)
+			h.writeJSON(w, http.StatusOK, opt)
+			return
+		}
+		h.logger.Info("GetOptimizedDocument 202 not ready", "document_id", documentID, "status", opt.ProcessingStatus)
+		h.writeJSON(w, http.StatusAccepted, opt)
+		return
+	}
+
+	// Ensure processed_at is set in response when missing (best-effort).
+	if opt.ProcessedAt == nil {
+		now := time.Now().UTC()
+		opt.ProcessedAt = &now
+	}
+
+	h.logger.Info("[Doc] GetOptimizedDocument 200 ready", "document_id", documentID, "pages_total", pageCount)
+	h.writeJSON(w, http.StatusOK, opt)
 }
 
 type updateDocumentRequest struct {
@@ -621,6 +762,21 @@ func (h *DocumentHandler) DeleteTag(w http.ResponseWriter, r *http.Request) {
 }
 
 // writeError writes an error response
+// contentMatchesExtension checks file magic numbers match the declared extension.
+// PDF: %PDF; EPUB: ZIP (PK); .txt/.md have no single magic, so we allow.
+func (h *DocumentHandler) contentMatchesExtension(prefix []byte, ext string) bool {
+	switch ext {
+	case ".pdf":
+		return len(prefix) >= 4 && string(prefix[:4]) == "%PDF"
+	case ".epub":
+		return len(prefix) >= 4 && prefix[0] == 0x50 && prefix[1] == 0x4B && prefix[2] == 0x03 && prefix[3] == 0x04 // ZIP local file header
+	case ".txt", ".md":
+		return true
+	default:
+		return false
+	}
+}
+
 func (h *DocumentHandler) writeError(w http.ResponseWriter, statusCode int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"pdf-text-reader/internal/config"
@@ -213,6 +214,10 @@ func (h *PreferenceHandler) UpdateReadingPosition(w http.ResponseWriter, r *http
 	}
 
 	if err := h.preferenceService.UpdateReadingPosition(user.ID, documentID, &position, token); err != nil {
+		if errors.Is(err, domain.ErrDocumentNotFound) {
+			h.writeError(w, http.StatusNotFound, "Document not found")
+			return
+		}
 		h.logger.Error("Failed to update reading position", err, "user_id", user.ID, "document_id", documentID)
 		h.writeError(w, http.StatusInternalServerError, "Failed to update reading position")
 		return

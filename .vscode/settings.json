@@ -1,4 +1,5 @@
 {
+  "prettier.prettierPath": "",
   "go.useLanguageServer": true,
   "go.lintTool": "golangci-lint",
   "go.lintOnSave": "package",

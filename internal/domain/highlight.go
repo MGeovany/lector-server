@@ -4,12 +4,12 @@ import "time"
 
 // Highlight represents a user's saved excerpt from a document.
 type Highlight struct {
-	ID         string  `json:"id"`
-	UserID     string  `json:"user_id"`
-	DocumentID string  `json:"document_id"`
-	Quote      string  `json:"quote"`
-	PageNumber *int    `json:"page_number,omitempty"`
-	Progress   *float32 `json:"progress,omitempty"`
+	ID         string    `json:"id"`
+	UserID     string    `json:"user_id"`
+	DocumentID string    `json:"document_id"`
+	Quote      string    `json:"quote"`
+	PageNumber *int      `json:"page_number,omitempty"`
+	Progress   *float32  `json:"progress,omitempty"`
 	CreatedAt  time.Time `json:"created_at"`
 }
 
@@ -26,4 +26,3 @@ type HighlightService interface {
 	ListHighlights(userID string, documentID *string, token string) ([]*Highlight, error)
 	DeleteHighlight(userID string, highlightID string, token string) error
 }
-

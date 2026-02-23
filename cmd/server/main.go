@@ -50,6 +50,14 @@ func main() {
 		container.Logger,
 	)
 
+	if container.AIService == nil {
+		log.Fatal("AIService not available; cannot start server without AI support (missing GCP_PROJECT_ID or credentials)")
+	}
+	aiHandler := handler.NewAIHandler(
+		container.AIService,
+		container.Logger,
+	)
+
 	// Router
 	router := handler.NewRouter(
 		authHandler,
@@ -57,6 +65,7 @@ func main() {
 		documentHandler,
 		preferenceHandler,
 		highlightHandler,
+		aiHandler,
 		authMiddleware.Middleware,
 	)
 

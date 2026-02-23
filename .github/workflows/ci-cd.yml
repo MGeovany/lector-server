@@ -95,9 +95,15 @@ jobs:
     - name: Run Gosec Security Scanner
       run: |
         ~/go/bin/gosec -no-fail -fmt sarif -out results.sarif ./...
-    
+
+    # Gosec can emit invalid SARIF (e.g. relationships not as objects); normalize for GitHub
+    - name: Normalize SARIF for upload
+      run: |
+        jq 'del(.runs[].tool.driver.rules[].relationships)' results.sarif > results_normalized.sarif
+        mv results_normalized.sarif results.sarif
+
     - name: Upload SARIF file
-      uses: github/codeql-action/upload-sarif@v2
+      uses: github/codeql-action/upload-sarif@v3
       with:
         sarif_file: results.sarif
 

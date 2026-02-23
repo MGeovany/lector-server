@@ -105,6 +105,19 @@ func (m *MockDocumentRepository) SetFavorite(userID string, documentID string, i
 	return errors.New("document not found")
 }
 
+func (m *MockDocumentRepository) GetOptimizedByID(documentID string, token string) (*domain.OptimizedDocument, error) {
+	if doc, exists := m.documents[documentID]; exists {
+		return &domain.OptimizedDocument{
+			DocumentID:         doc.ID,
+			UserID:             doc.UserID,
+			ProcessingStatus:   doc.ProcessingStatus,
+			OptimizedSizeBytes: doc.OptimizedSizeBytes,
+			ProcessedAt:        doc.ProcessedAt,
+		}, nil
+	}
+	return nil, errors.New("document not found")
+}
+
 type MockStorageService struct {
 	files map[string][]byte
 }

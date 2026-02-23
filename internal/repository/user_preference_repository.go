@@ -3,6 +3,7 @@ package repository
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"pdf-text-reader/internal/domain"
@@ -300,6 +301,10 @@ func (r *UserPreferencesRepository) UpdateReadingPosition(position *domain.Readi
 		Upsert(data, "", "", "").
 		Execute()
 	if err != nil {
+		errStr := err.Error()
+		if strings.Contains(errStr, "23503") || strings.Contains(errStr, "reading_positions_document_id_fkey") {
+			return fmt.Errorf("%w: %s", domain.ErrDocumentNotFound, errStr)
+		}
 		return fmt.Errorf("failed to update reading position: %w", err)
 	}
 
