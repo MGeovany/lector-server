@@ -248,10 +248,6 @@ func (s *DocumentService) Upload(
 	if originalName == "" {
 		originalName = docID + ext
 	}
-	baseTitle := strings.TrimSpace(strings.TrimSuffix(originalName, filepath.Ext(originalName)))
-	if baseTitle == "" {
-		baseTitle = originalName
-	}
 
 	// Process PDF to extract text and metadata
 	// For small files, process immediately; for larger files, process in background
