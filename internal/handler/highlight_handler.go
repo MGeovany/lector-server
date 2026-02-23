@@ -144,4 +144,3 @@ func (h *HighlightHandler) writeJSON(w http.ResponseWriter, statusCode int, data
 	w.WriteHeader(statusCode)
 	_ = json.NewEncoder(w).Encode(data)
 }
-

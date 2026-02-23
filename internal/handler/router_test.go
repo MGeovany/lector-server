@@ -18,7 +18,9 @@ func (m *MockHighlightService) CreateHighlight(userID string, highlight *domain.
 func (m *MockHighlightService) ListHighlights(userID string, documentID *string, token string) ([]*domain.Highlight, error) {
 	return []*domain.Highlight{}, nil
 }
-func (m *MockHighlightService) DeleteHighlight(userID string, highlightID string, token string) error { return nil }
+func (m *MockHighlightService) DeleteHighlight(userID string, highlightID string, token string) error {
+	return nil
+}
 
 func TestNewRouter_Health(t *testing.T) {
 	docService := NewMockDocumentService()

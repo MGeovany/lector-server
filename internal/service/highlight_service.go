@@ -52,4 +52,3 @@ func (s *HighlightService) DeleteHighlight(userID string, highlightID string, to
 	}
 	return s.repo.Delete(userID, highlightID, token)
 }
-

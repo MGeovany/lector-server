@@ -452,4 +452,3 @@ func normalizeText(s string) string {
 	}
 	return strings.TrimSpace(strings.Join(out, "\n"))
 }
-

@@ -49,7 +49,7 @@ func main() {
 		container.AuthService,
 		container.Logger,
 	)
-	
+
 	if container.AIService == nil {
 		log.Fatal("AIService not available; cannot start server without AI support (missing GCP_PROJECT_ID or credentials)")
 	}
