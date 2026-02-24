@@ -367,8 +367,8 @@ func (s *DocumentService) Upload(
 					}
 					optimizedPages[idx] = pageText
 
-					// Throttle intermediate DB writes.
-					if pageNumber == 1 || pageNumber-lastIntermediateUpdatePage >= 12 {
+					// Throttle intermediate DB writes (fewer writes = less DB/CPU; client still gets partial quickly).
+					if pageNumber == 1 || pageNumber-lastIntermediateUpdatePage >= 20 {
 						lastIntermediateUpdatePage = pageNumber
 						if b, err := json.Marshal(optimizedPages); err == nil {
 							// Update just the optimized content + status; keep content empty until the end.
@@ -414,9 +414,10 @@ func (s *DocumentService) Upload(
 				contentJSON = json.RawMessage("[]")
 			}
 
-			optimizedJSON, err := s.pdfProcessor.ConvertToOptimizedPagesJSON(blocks, pdfMetadata.PageCount)
+			// Use the optimizedPages we built in the callback; no second pass over blocks.
+			optimizedJSON, err := json.Marshal(optimizedPages)
 			if err != nil {
-				s.logger.Error("Failed to convert blocks to optimized pages JSON", err, "doc_id", docID)
+				s.logger.Error("Failed to marshal optimized pages", err, "doc_id", docID)
 				optimizedJSON = json.RawMessage("[]")
 			}
 
@@ -433,11 +434,11 @@ func (s *DocumentService) Upload(
 			target.Metadata.PageCount = pdfMetadata.PageCount
 			target.Metadata.HasPassword = pdfMetadata.HasPassword
 
-			// Optimized checksums/sizes
+			// Optimized checksums/sizes (reuse marshaled optimizedJSON)
 			optSize := int64(len(optimizedJSON))
-			optSum := sha256.Sum256([]byte(optimizedJSON))
+			optSum := sha256.Sum256(optimizedJSON)
 			optChecksum := hex.EncodeToString(optSum[:])
-			target.OptimizedContent = optimizedJSON
+			target.OptimizedContent = json.RawMessage(optimizedJSON)
 			target.OptimizedSizeBytes = &optSize
 			target.OptimizedChecksumSHA256 = &optChecksum
 
@@ -575,11 +576,14 @@ func (s *DocumentService) getOptimizedDocument(documentID string, token string, 
 	opt := &domain.OptimizedDocument{
 		DocumentID:         doc.ID,
 		UserID:             doc.UserID,
+		OptimizedVersion:   domain.CurrentOptimizedPayloadVersion,
 		OptimizedSizeBytes: doc.OptimizedSizeBytes,
 		ProcessingStatus:   doc.ProcessingStatus,
 		ProcessedAt:        doc.ProcessedAt,
 	}
 	if doc.OptimizedChecksumSHA256 != nil {
+		opt.OptimizedChecksumSHA256 = doc.OptimizedChecksumSHA256
+		// Backwards-compatible alias.
 		opt.OptimizedChecksumSHA = doc.OptimizedChecksumSHA256
 	}
 	if includePages && len(doc.OptimizedContent) > 0 {

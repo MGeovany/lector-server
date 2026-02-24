@@ -93,12 +93,23 @@ type Document struct {
 	ProcessingError         *string         `json:"processing_error,omitempty"`
 }
 
+// CurrentOptimizedPayloadVersion is the version of the optimized payload format.
+// Bump when the format or semantics change so clients can invalidate caches.
+const CurrentOptimizedPayloadVersion = 1
+
 // OptimizedDocument is the lightweight response for offline-first clients (optimized endpoint).
 type OptimizedDocument struct {
-	DocumentID           string     `json:"document_id,omitempty"`
-	UserID               string     `json:"user_id,omitempty"`
-	Pages                []string   `json:"pages,omitempty"`
-	OptimizedSizeBytes   *int64     `json:"optimized_size_bytes,omitempty"`
+	DocumentID   string   `json:"document_id,omitempty"`
+	UserID       string   `json:"user_id,omitempty"`
+	Pages        []string `json:"pages,omitempty"`
+	// OptimizedVersion is a version number for the optimized payload that should be
+	// bumped whenever the optimized payload format or contents change in a way that
+	// affects clients. Clients (e.g. iOS) use it for offline cache invalidation.
+	OptimizedVersion int `json:"optimized_version,omitempty"`
+	OptimizedSizeBytes *int64 `json:"optimized_size_bytes,omitempty"`
+	// OptimizedChecksumSHA256 is the checksum used by offline-first clients (iOS).
+	OptimizedChecksumSHA256 *string `json:"optimized_checksum_sha256,omitempty"`
+	// OptimizedChecksumSHA is kept for backwards compatibility (older clients / logs).
 	OptimizedChecksumSHA *string    `json:"optimized_checksum_sha,omitempty"`
 	ProcessingStatus     string     `json:"processing_status,omitempty"`
 	ProcessedAt          *time.Time `json:"processed_at,omitempty"`

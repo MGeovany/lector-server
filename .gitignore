@@ -43,3 +43,8 @@ uploads/
 # Supabase
 db/
 coverage.html
+skills-lock.json
+agents/*
+
+# Skills
+skills/
