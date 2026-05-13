@@ -381,11 +381,12 @@ func (s *DocumentService) Upload(
 					}
 					optimizedPages[idx] = pageText
 
+					target.Metadata.ProcessedPages = pageNumber
+
 					// Throttle intermediate DB writes (fewer writes = less DB/CPU; client still gets partial quickly).
 					if pageNumber == 1 || pageNumber-lastIntermediateUpdatePage >= 20 {
 						lastIntermediateUpdatePage = pageNumber
 						if b, err := json.Marshal(optimizedPages); err == nil {
-							// Update just the optimized content + status; keep content empty until the end.
 							target.OptimizedContent = json.RawMessage(b)
 							size := int64(len(b))
 							sum := sha256.Sum256(b)
