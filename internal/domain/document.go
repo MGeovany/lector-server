@@ -46,6 +46,7 @@ type DocumentMetadata struct {
 	Format         string `json:"format,omitempty"`
 	Source         string `json:"source,omitempty"`
 	HasPassword    bool   `json:"has_password,omitempty"`
+	ProcessedPages int    `json:"processed_pages,omitempty"`
 }
 
 // Validate checks if the metadata has valid values.
