@@ -377,8 +377,8 @@ func (s *DocumentService) Upload(
 
 					target.Metadata.ProcessedPages = pageNumber
 
-					// Write progress on every page for real-time percentage updates.
-					if pageNumber == 1 || pageNumber-lastIntermediateUpdatePage >= 1 {
+					// Write progress every 5 pages — smooth enough (2.4% jumps) without overwhelming Supabase.
+					if pageNumber == 1 || pageNumber-lastIntermediateUpdatePage >= 5 {
 						lastIntermediateUpdatePage = pageNumber
 						if b, err := json.Marshal(optimizedPages); err == nil {
 							target.OptimizedContent = json.RawMessage(b)
