@@ -473,7 +473,7 @@ func (s *DocumentService) Upload(
 				if updateErr = s.repo.Update(target, token); updateErr == nil {
 					break
 				}
-				s.logger.Error("Failed to update document with processed content (attempt "+fmt.Sprintf("%d/%d)", attempt+1, maxRetries), updateErr, "doc_id", docID)
+				s.logger.Error(fmt.Sprintf("Failed to update document with processed content (attempt %d/%d)", attempt+1, maxRetries), updateErr, "doc_id", docID)
 			}
 			if updateErr != nil {
 				s.logger.Error("All retries exhausted for document processing update", updateErr, "doc_id", docID)
@@ -562,7 +562,7 @@ func (s *DocumentService) Upload(
 				if updateErrTxt = s.repo.Update(target, token); updateErrTxt == nil {
 					break
 				}
-				s.logger.Error("Failed to update document with processed content (attempt "+fmt.Sprintf("%d/%d)", attempt+1, maxRetriesTxt), updateErrTxt, "doc_id", docID)
+				s.logger.Error(fmt.Sprintf("Failed to update document with processed content (attempt %d/%d)", attempt+1, maxRetriesTxt), updateErrTxt, "doc_id", docID)
 			}
 			if updateErrTxt != nil {
 				s.logger.Error("All retries exhausted for document processing update", updateErrTxt, "doc_id", docID)
