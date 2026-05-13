@@ -112,14 +112,10 @@ func (p *PDFProcessor) ProcessPDFWithCallbacks(
 		case res := <-resultCh:
 			text, err = res.text, res.err
 		case <-time.After(pageTimeout):
-			p.logger.Warn("PDF page extraction timeout; using empty page", "page", pageNum+1, "total", numPages, "timeout_sec", int(pageTimeout.Seconds()))
 			text = ""
 			err = fmt.Errorf("timeout after %v", pageTimeout)
-			// resultCh is buffered (cap 1), so the extraction goroutine can send and exit without a receiver.
-			// If go-fitz blocks indefinitely in doc.Text(), that goroutine may leak; go-fitz has no context support.
 		}
 		if err != nil {
-			p.logger.Warn("[Doc] PDF page extraction failed", "page_num", pageNum+1, "total", numPages, "error", err)
 			if onPage != nil {
 				onPage(pageNum+1, "")
 			}
@@ -136,13 +132,11 @@ func (p *PDFProcessor) ProcessPDFWithCallbacks(
 		// If page has no text, still create an empty block to preserve page structure
 		text = strings.TrimSpace(text)
 		if text == "" {
-			p.logger.Debug("[Doc] PDF page has no extractable text (scanned/image?)", "page_num", pageNum+1, "total", numPages, "chars", 0)
-			// Create an empty block for empty pages to maintain page count
 			blocks = append(blocks, TextBlock{
 				Type:       "paragraph",
 				Content:    "",
 				Level:      0,
-				PageNumber: pageNum + 1, // 1-indexed for frontend
+				PageNumber: pageNum + 1,
 				Position:   0,
 			})
 			if onPage != nil {
@@ -150,7 +144,6 @@ func (p *PDFProcessor) ProcessPDFWithCallbacks(
 			}
 			continue
 		}
-		p.logger.Debug("PDF processing page", "page", pageNum+1, "total", numPages, "chars", len(text))
 
 		// Split text into paragraphs and process
 		paragraphs := p.splitIntoParagraphs(text)
@@ -339,7 +332,6 @@ func (p *PDFProcessor) sanitizeText(text string) string {
 }
 
 // ConvertToJSON converts TextBlocks to JSON format expected by frontend.
-// Blocks are already sanitized per-paragraph, so only minimal cleaning is needed.
 func (p *PDFProcessor) ConvertToJSON(blocks []TextBlock) (json.RawMessage, error) {
 	jsonBytes, err := json.Marshal(blocks)
 	if err != nil {
@@ -348,19 +340,18 @@ func (p *PDFProcessor) ConvertToJSON(blocks []TextBlock) (json.RawMessage, error
 
 	jsonStr := string(jsonBytes)
 
-	// Remove \u0000 (NULL) and surrogate pairs which PostgreSQL JSONB rejects.
-	reClean := regexp.MustCompile(`\\u0000|\\u[dD][89aAbBcCdDeEfF][0-9a-fA-F]{2}`)
+	// Remove control characters (0000-001F) and surrogate pairs (D800-DFFF)
+	// that PostgreSQL JSONB rejects (22P05 error).
+	reClean := regexp.MustCompile(`\\u00[0-1][0-9a-fA-F]|\\u[dD][89aAbBcCdDeEfF][0-9a-fA-F]{2}`)
 	jsonStr = reClean.ReplaceAllString(jsonStr, "")
 	jsonStr = strings.ReplaceAll(jsonStr, "\x00", "")
 
-	// Validate the JSON is still valid.
 	var verify interface{}
 	if err := json.Unmarshal([]byte(jsonStr), &verify); err != nil {
-		p.logger.Warn("ConvertToJSON: invalid JSON after cleaning, returning empty", "error", err)
+		p.logger.Warn("[Timing] ConvertToJSON: invalid after cleaning, returning empty", "error", err)
 		return json.RawMessage("[]"), nil
 	}
 
-	// Re-marshal for a clean, canonical JSON string.
 	cleaned, err := json.Marshal(verify)
 	if err != nil {
 		return json.RawMessage(jsonStr), nil

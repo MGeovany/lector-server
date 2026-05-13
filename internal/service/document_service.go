@@ -291,14 +291,8 @@ func (s *DocumentService) Upload(
 				Source:         "upload",
 			}
 
-			s.logger.Info("DocumentData processed synchronously",
-				"doc_id", docID,
-				"blocks_count", len(blocks),
-				"page_count", pdfMetadata.PageCount,
-			)
 		}
 	} else {
-		// For larger files, create document with placeholder; a single background worker (started after Create) will run processAndUpdate
 		contentJSON = json.RawMessage("[]")
 		metadata = domain.DocumentMetadata{
 			OriginalTitle: originalName,
@@ -401,18 +395,19 @@ func (s *DocumentService) Upload(
 				},
 			)
 			if err != nil {
-				s.logger.Error("Failed to process PDF", err, "doc_id", docID)
+				s.logger.Error("[Timing] Failed to process PDF", err, "doc_id", docID)
 				msg := err.Error()
 				target.ProcessingStatus = "failed"
 				target.ProcessingError = &msg
 				target.UpdatedAt = time.Now().UTC()
 				if err := s.repo.Update(target, token); err != nil {
-					s.logger.Error("Failed to update document after processing failure", err, "doc_id", docID)
+					s.logger.Error("[Timing] Failed to update document after processing failure", err, "doc_id", docID)
 				}
 				return
 			}
 
-			// Ensure optimizedPages length matches the PDF page count.
+			t0 := time.Now()
+
 			if pdfMetadata.PageCount > 0 {
 				if optimizedPages == nil {
 					optimizedPages = make([]string, pdfMetadata.PageCount)
@@ -425,22 +420,21 @@ func (s *DocumentService) Upload(
 
 			contentJSON, err := s.pdfProcessor.ConvertToJSON(blocks)
 			if err != nil {
-				s.logger.Error("Failed to convert blocks to JSON", err, "doc_id", docID)
+				s.logger.Error("[Timing] ConvertToJSON failed", err, "doc_id", docID)
 				contentJSON = json.RawMessage("[]")
 			}
+			s.logger.Info("[Timing] ConvertToJSON done", "doc_id", docID, "blocks", len(blocks), "elapsed_ms", time.Since(t0).Milliseconds())
 
-			// Use the optimizedPages we built in the callback; no second pass over blocks.
 			optimizedJSON, err := json.Marshal(optimizedPages)
 			if err != nil {
-				s.logger.Error("Failed to marshal optimized pages", err, "doc_id", docID)
+				s.logger.Error("[Timing] Failed to marshal optimized pages", err, "doc_id", docID)
 				optimizedJSON = json.RawMessage("[]")
 			}
+			s.logger.Info("[Timing] Marshal optimized pages done", "doc_id", docID, "pages", len(optimizedPages), "elapsed_ms", time.Since(t0).Milliseconds())
 
-			// Prefer PDF title when present.
 			if pdfMetadata.Title != "" {
 				target.Title = pdfMetadata.Title
 			}
-			// Author from PDF metadata.
 			if pdfMetadata.Author != "" {
 				a := pdfMetadata.Author
 				target.Author = &a
@@ -449,7 +443,6 @@ func (s *DocumentService) Upload(
 			target.Metadata.PageCount = pdfMetadata.PageCount
 			target.Metadata.HasPassword = pdfMetadata.HasPassword
 
-			// Optimized checksums/sizes (reuse marshaled optimizedJSON)
 			optSize := int64(len(optimizedJSON))
 			optSum := sha256.Sum256(optimizedJSON)
 			optChecksum := hex.EncodeToString(optSum[:])
@@ -464,41 +457,26 @@ func (s *DocumentService) Upload(
 			target.ProcessingError = nil
 			target.UpdatedAt = processedAt
 
-			// Retry the final update up to 3 times with backoff to avoid stuck-at-processing documents.
 			const maxRetries = 3
 			var updateErr error
 			for attempt := 0; attempt < maxRetries; attempt++ {
 				if attempt > 0 {
 					time.Sleep(time.Duration(attempt) * 500 * time.Millisecond)
 				}
+				t1 := time.Now()
 				if updateErr = s.repo.Update(target, token); updateErr == nil {
+					s.logger.Info("[Timing] Final DB update succeeded", "doc_id", docID, "attempt", attempt+1, "elapsed_ms", time.Since(t0).Milliseconds())
 					break
 				}
-				s.logger.Error(fmt.Sprintf("Failed to update document with processed content (attempt %d/%d)", attempt+1, maxRetries), updateErr, "doc_id", docID)
+				s.logger.Error(fmt.Sprintf("[Timing] Final DB update failed (attempt %d/%d)", attempt+1, maxRetries), updateErr, "doc_id", docID, "elapsed_ms", time.Since(t1).Milliseconds())
 			}
 			if updateErr != nil {
-				s.logger.Error("All retries exhausted for document processing update", updateErr, "doc_id", docID)
+				s.logger.Error("[Timing] All retries exhausted for final DB update", updateErr, "doc_id", docID, "total_elapsed_ms", time.Since(t0).Milliseconds())
 				msg := updateErr.Error()
 				target.ProcessingError = &msg
 				target.ProcessingStatus = "failed"
 				_ = s.repo.Update(target, token)
 				return
-			}
-
-			readyPages := 0
-			for _, s := range optimizedPages {
-				if strings.TrimSpace(s) != "" {
-					readyPages++
-				}
-			}
-			s.logger.Info("[Doc] Document processed",
-				"doc_id", docID,
-				"blocks_count", len(blocks),
-				"page_count", pdfMetadata.PageCount,
-				"pages_with_text", readyPages,
-			)
-			if pdfMetadata.PageCount > 0 && readyPages == 0 {
-				s.logger.Warn("[Doc] Document has no extractable text; likely scanned/image-only PDF", "doc_id", docID, "page_count", pdfMetadata.PageCount)
 			}
 			return
 
@@ -574,12 +552,6 @@ func (s *DocumentService) Upload(
 				return
 			}
 
-			s.logger.Info("Document processed",
-				"doc_id", docID,
-				"blocks_count", len(blocks),
-				"page_count", pageCount,
-				"format", format,
-			)
 			return
 
 		default:
@@ -597,11 +569,8 @@ func (s *DocumentService) Upload(
 		return doc, nil
 	}
 
-	// IMPORTANT: avoid mutating the response object after returning.
-	// Create an independent copy for background processing.
 	backgroundDoc := *doc
 	go processAndUpdate(&backgroundDoc)
-	s.logger.Info("Document created; processing in background", "doc_id", docID, "file_size", totalSize)
 	return doc, nil
 }
 
