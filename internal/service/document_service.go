@@ -383,8 +383,8 @@ func (s *DocumentService) Upload(
 
 					target.Metadata.ProcessedPages = pageNumber
 
-					// Throttle intermediate DB writes (fewer writes = less DB/CPU; client still gets partial quickly).
-					if pageNumber == 1 || pageNumber-lastIntermediateUpdatePage >= 50 {
+					// Write progress on every page for real-time percentage updates.
+					if pageNumber == 1 || pageNumber-lastIntermediateUpdatePage >= 1 {
 						lastIntermediateUpdatePage = pageNumber
 						if b, err := json.Marshal(optimizedPages); err == nil {
 							target.OptimizedContent = json.RawMessage(b)
