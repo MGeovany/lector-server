@@ -92,7 +92,7 @@ func (p *PDFProcessor) ProcessPDFWithCallbacks(
 
 	var blocks []TextBlock
 	numPages := doc.NumPage()
-	const pageTimeout = 90 * time.Second
+	const pageTimeout = 15 * time.Second
 
 	type pageResult struct {
 		text string
@@ -338,71 +338,34 @@ func (p *PDFProcessor) sanitizeText(text string) string {
 	return testStr
 }
 
-// ConvertToJSON converts TextBlocks to JSON format expected by frontend
-// Ensures the JSON is safe for PostgreSQL JSONB (no \u0000 or problematic escape sequences)
+// ConvertToJSON converts TextBlocks to JSON format expected by frontend.
+// Blocks are already sanitized per-paragraph, so only minimal cleaning is needed.
 func (p *PDFProcessor) ConvertToJSON(blocks []TextBlock) (json.RawMessage, error) {
-	// Marshal to JSON
 	jsonBytes, err := json.Marshal(blocks)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal blocks: %w", err)
 	}
 
-	// Remove problematic Unicode escape sequences that PostgreSQL rejects
 	jsonStr := string(jsonBytes)
 
-	// Remove all control character Unicode escapes (0000-001F)
-	reControlChars := regexp.MustCompile(`\\u00[0-1][0-9a-fA-F]`)
-	jsonStr = reControlChars.ReplaceAllString(jsonStr, "")
-
-	// Remove surrogate pairs (D800-DFFF) which are invalid in JSON
-	reSurrogates := regexp.MustCompile(`\\u[dD][89aAbBcCdDeEfF][0-9a-fA-F]{2}`)
-	jsonStr = reSurrogates.ReplaceAllString(jsonStr, "")
-
-	// Remove any literal NULL bytes
+	// Remove \u0000 (NULL) and surrogate pairs which PostgreSQL JSONB rejects.
+	reClean := regexp.MustCompile(`\\u0000|\\u[dD][89aAbBcCdDeEfF][0-9a-fA-F]{2}`)
+	jsonStr = reClean.ReplaceAllString(jsonStr, "")
 	jsonStr = strings.ReplaceAll(jsonStr, "\x00", "")
-	jsonStr = strings.ReplaceAll(jsonStr, "\\u0000", "")
-	jsonStr = strings.ReplaceAll(jsonStr, "\\u000", "")
 
-	// Verify the cleaned JSON is valid by unmarshaling and re-marshaling
-	var verify []TextBlock
+	// Validate the JSON is still valid.
+	var verify interface{}
 	if err := json.Unmarshal([]byte(jsonStr), &verify); err != nil {
-		// If verification fails, try to recover by cleaning more aggressively
-		// Remove ALL Unicode escapes and re-encode
-		reAllUnicode := regexp.MustCompile(`\\u[0-9a-fA-F]{4}`)
-		jsonStr = reAllUnicode.ReplaceAllStringFunc(jsonStr, func(match string) string {
-			// Check if it's a control character or surrogate
-			hexStr := match[2:]
-			if len(hexStr) == 4 {
-				if (hexStr[0] == '0' && hexStr[1] == '0' && hexStr[2] <= '1') ||
-					((hexStr[0] == 'd' || hexStr[0] == 'D') && (hexStr[1] >= '8' && hexStr[1] <= 'f' || hexStr[1] >= '8' && hexStr[1] <= 'F')) {
-					return "" // Remove problematic sequences
-				}
-			}
-			return match // Keep other Unicode escapes
-		})
-
-		// Try unmarshaling again
-		if err := json.Unmarshal([]byte(jsonStr), &verify); err != nil {
-			p.logger.Warn("Failed to verify cleaned JSON after aggressive cleaning", "error", err)
-			// Return empty array as fallback
-			return json.RawMessage("[]"), nil
-		}
+		p.logger.Warn("ConvertToJSON: invalid JSON after cleaning, returning empty", "error", err)
+		return json.RawMessage("[]"), nil
 	}
 
-	// Re-marshal to ensure clean JSON
-	cleanedJSON, err := json.Marshal(verify)
+	// Re-marshal for a clean, canonical JSON string.
+	cleaned, err := json.Marshal(verify)
 	if err != nil {
-		// If re-marshaling fails, return the cleaned string version
 		return json.RawMessage(jsonStr), nil
 	}
-
-	// Final pass: clean the re-marshaled JSON one more time
-	finalJSONStr := string(cleanedJSON)
-	finalJSONStr = reControlChars.ReplaceAllString(finalJSONStr, "")
-	finalJSONStr = reSurrogates.ReplaceAllString(finalJSONStr, "")
-	finalJSONStr = strings.ReplaceAll(finalJSONStr, "\x00", "")
-
-	return json.RawMessage(finalJSONStr), nil
+	return json.RawMessage(cleaned), nil
 }
 
 // ConvertToOptimizedPagesJSON converts TextBlocks to a JSON array of page strings (one string per page).
