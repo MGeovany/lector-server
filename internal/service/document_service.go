@@ -341,6 +341,20 @@ func (s *DocumentService) Upload(
 	}
 
 	processAndUpdate := func(target *domain.DocumentData) {
+		// Prevent any panic from silently leaving the document stuck at "processing".
+		defer func() {
+			if r := recover(); r != nil {
+				errMsg := fmt.Sprintf("panic during processing: %v", r)
+				s.logger.Error("Panic recovered in processAndUpdate", nil, "doc_id", docID, "panic", r)
+				target.ProcessingStatus = "failed"
+				target.ProcessingError = &errMsg
+				target.UpdatedAt = time.Now().UTC()
+				if updateErr := s.repo.Update(target, token); updateErr != nil {
+					s.logger.Error("Failed to update document after panic recovery", updateErr, "doc_id", docID)
+				}
+			}
+		}()
+
 		switch format {
 		case "pdf":
 			// Build an initial placeholder optimized array so the client can open quickly.
@@ -449,8 +463,24 @@ func (s *DocumentService) Upload(
 			target.ProcessingError = nil
 			target.UpdatedAt = processedAt
 
-			if err := s.repo.Update(target, token); err != nil {
-				s.logger.Error("Failed to update document with processed content", err, "doc_id", docID)
+			// Retry the final update up to 3 times with backoff to avoid stuck-at-processing documents.
+			const maxRetries = 3
+			var updateErr error
+			for attempt := 0; attempt < maxRetries; attempt++ {
+				if attempt > 0 {
+					time.Sleep(time.Duration(attempt) * 500 * time.Millisecond)
+				}
+				if updateErr = s.repo.Update(target, token); updateErr == nil {
+					break
+				}
+				s.logger.Error(fmt.Sprintf("Failed to update document with processed content (attempt %d/%d)", attempt+1, maxRetries), updateErr, "doc_id", docID)
+			}
+			if updateErr != nil {
+				s.logger.Error("All retries exhausted for document processing update", updateErr, "doc_id", docID)
+				msg := updateErr.Error()
+				target.ProcessingError = &msg
+				target.ProcessingStatus = "failed"
+				_ = s.repo.Update(target, token)
 				return
 			}
 
@@ -522,8 +552,24 @@ func (s *DocumentService) Upload(
 			target.ProcessingError = nil
 			target.UpdatedAt = processedAt
 
-			if err := s.repo.Update(target, token); err != nil {
-				s.logger.Error("Failed to update document with processed content", err, "doc_id", docID)
+			// Retry the final update up to 3 times with backoff to avoid stuck-at-processing documents.
+			const maxRetriesTxt = 3
+			var updateErrTxt error
+			for attempt := 0; attempt < maxRetriesTxt; attempt++ {
+				if attempt > 0 {
+					time.Sleep(time.Duration(attempt) * 500 * time.Millisecond)
+				}
+				if updateErrTxt = s.repo.Update(target, token); updateErrTxt == nil {
+					break
+				}
+				s.logger.Error(fmt.Sprintf("Failed to update document with processed content (attempt %d/%d)", attempt+1, maxRetriesTxt), updateErrTxt, "doc_id", docID)
+			}
+			if updateErrTxt != nil {
+				s.logger.Error("All retries exhausted for document processing update", updateErrTxt, "doc_id", docID)
+				msg := updateErrTxt.Error()
+				target.ProcessingError = &msg
+				target.ProcessingStatus = "failed"
+				_ = s.repo.Update(target, token)
 				return
 			}
 
